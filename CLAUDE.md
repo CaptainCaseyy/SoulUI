@@ -48,6 +48,12 @@ from two machines (laptop + home PC) by pulling this repo, so **this repo is the
 - `tools/` scripts (link the addons into the WoW AddOns folder, lint)
 - `docs/` build log, architecture, research
 
+## Repo and second machine
+Private repo: https://github.com/CaptainCaseyy/SoulUI (branch `main`). New machine setup:
+`git clone https://github.com/CaptainCaseyy/SoulUI.git` into Documents\GitHub, run
+`tools/link-addons.ps1`, and `npm install --prefix tools` for the lint/audit tools
+(`node tools/lint.mjs`, `node tools/audit.mjs`). Always `git pull` first and push when done.
+
 ## Testing in game
 Run `tools/link-addons.ps1` once per machine (creates directory junctions from the WoW AddOns
 folder to this repo, so edits are live after `/reload`). Default WoW path:
