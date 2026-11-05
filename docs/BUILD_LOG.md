@@ -2,6 +2,70 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-05 — laptop — 0.4.0 casts, dispels, vertical party, meter and menu restyle
+
+The owner tested 0.3.0. Edit mode was much better. Still wrong:
+- **Settings menu:** not close to Ellesmere's quality.
+- **Casts:** no difference between interruptible and uninterruptible.
+- **Dispels:** no dispel or purge tracking.
+- **Party frames:** horizontal, with no way to change it.
+- **Meters:** looked unrefined.
+
+Reference: the EllesmereUI CurseForge gallery (Nameplates options screenshot) and the installed EllesmereUI source for the APIs.
+
+**Casts (`Core/Casts.lua`, new).** Root cause: `Secret.PickColor` passed its colors to `C_CurveUtil.EvaluateColorFromBoolean` in the wrong order. The engine signature is `(bool, ifTrue, ifFalse)`. So interruptible casts were drawn gray and uninterruptible ones in the accent color, which made the two look reversed. The helper is fixed, and enemy casts (nameplates, target, focus) now go through `Soul.Cast.Paint`:
+- **Interruptible:** gold.
+- **Your interrupt on cooldown:** dark orange. The kick is the first known spell from a per-class list, read via `C_Spell.GetSpellCooldownDuration(id):IsZero()`, and re-colored on `SPELL_UPDATE_COOLDOWN`.
+- **Not interruptible:** gray, with a lock icon.
+- **Important casts** (`C_Spell.IsSpellImportant`): a pulsing red outline.
+- **Important and not interruptible:** a STUN badge, made from two nested frames with `SetAlphaFromBoolean`, so the AND is computed by alpha multiplication, not by Lua.
+
+Colors use `EvaluateColorValueFromBoolean` per channel, so secret booleans are never compared. Colors and toggles live in `theme.cast` and are edited under General > Casts. The STUN badge is a heuristic: the game's important flag plus uninterruptible. Bosses ignore stuns.
+
+**Dispels (`Core/Auras.lua`, new).** Everything goes through `AuraContainer` groups, because 12.1 errors on Lua aura reads while auras are restricted. The highlight is a single frame-sized aura button with an outline. The engine shows that button only while the group filter matches, and tints it by dispel type where `AddDispelTypeTexture` is supported.
+- **Party and raid buttons, and player/target/focus frames:** outlined while the unit has a debuff you can cleanse (`HARMFUL|RAID_PLAYER_DISPELLABLE`).
+- **Enemy nameplates:** a row of buffs you can purge or soothe (`HELPFUL|DISPELLABLE`, blue ring), an outline on the plate, and your own debuffs (`HARMFUL|PLAYER`). Purge display defaults to "auto", meaning only when the player knows Purge, Dispel Magic, Spellsteal, Consume Magic, Devour Magic, Soothe or Tranquilizing Shot.
+- **Enemy target/focus frames:** the same purge outline, only while you can attack the unit.
+- **Friendly nameplates are not touched.** In instances they are forbidden to addons, so friendly dispels show on the group and unit frames instead. This is explained on the page.
+
+The nameplate pool is now 30, built at login. Plates built later in combat have no aura rows.
+
+**Party frames.** Vertical by default, with a Layout dropdown (vertical / horizontal). Existing profiles switch once (`profile._partyVertical`). The party column moves right of the left bar columns (`Soul:DefaultPartySpot` in Layout.lua).
+
+**Damage meters.** Restyled, from our own code, to Ellesmere's proportions:
+- **Header:** solid dark (#1B1B1B), with the meter name in the accent color and an accent underline. Segment and clock are dimmed. There are three icon buttons (segment, reset, hide), optionally shown only on hover. Click the title for the mode menu (right-click for the segment) using the shared UI kit menu.
+- **Rows:** spec icon (class crest when no spec), class-colored bar, name left, value right.
+- **Value formats:** `138M (412K)` (default), `138M | 412K`, total, per second, or total and percent.
+- **Window:** black at 75%.
+- **Tooltip:** total and per second on hover.
+- **Settings:** bar texture, class colors on/off, bar opacity, row gap, text size, rank numbers, mark my row, header height/color/accent/underline, window border.
+
+**Settings menu rebuilt again.**
+- **Window:** 1240x800. Gradient background tinted toward the accent, with an accent glow and streak in the header. Drag the header or the brand to move it.
+- **Sidebar:** brand mark, search across all settings, accent group headers, and module rows with an on/off dot (gray when the module addon is disabled).
+- **Page header:** large title and description, tab bar, and a "search this page" box.
+- **Live preview strip:** at the top of most pages, drawn from the same settings and redrawn on every change (`SoulUI_Options/Previews.lua`). Previews exist for unit frame, nameplate (cast, debuffs, purge ring and outline), cast colors, class resource tiles, action bar, party/raid and meter.
+- **Rows:** sections are cards with divider lines and hover, in two columns.
+- **Footer:** Reset Page, Reload UI, Edit Mode, and an outlined Done.
+
+**Checks.** `node tools/lint.mjs` and `node tools/audit.mjs` pass. **Nothing here has been run in game.** Watch for:
+- Whether `AddDispelTypeTexture` accepts the option table (on failure, the outlines show in their base color).
+- Whether the aura highlight button really covers the whole frame, since button size is set in `initializeFrame`.
+- STUN badge alpha nesting.
+- Kick detection for warlock pets.
+- The meter header icon textures (stock Blizzard files).
+- The party column position on the laptop.
+
+All addon versions are 0.4.0.
+
+**Review pass (same day).** A separate code review found 14 issues, all fixed before commit:
+- **Cast spell ID (in-combat error):** the `and/or` pick of the spell ID truth-tested a value that can be secret, which errors in restricted combat. It now picks by index.
+- **Nameplate login hitch:** nameplate aura containers (90 at login, about half a second of hitch) are now built lazily on first use out of combat. Plates still missing them get them at `PLAYER_REGEN_ENABLED`.
+- **Cast recolor cost:** recolors compute the kick state once per event, and cast state reuses one table per bar.
+- **Smaller fixes:** inner important-outline anchors, failed previews no longer leak frames, a guard for disabled modules in previews, stack-count options, meter resize math and spell-icon coords, the party migration flag ordering, row hover reset, and STUN badge width in the cast preview.
+
+The review questioned the `EvaluateColorValueFromBoolean` argument order. EllesmereUI's live code (`ev(isUnint, unintColor.r, cr)`) confirms `(bool, ifTrue, ifFalse)`. To check in game: `/run print(C_CurveUtil.EvaluateColorValueFromBoolean(true,1,0))` prints 1.
+
 ## 2026-11-05 — laptop — 0.3.0 editor rebuild, action bar sizing, shards, reference layout
 
 The owner tested 0.2.12 and compared it to the reference stream screenshot. Problems: action bar icons oversized, spread apart and cut off on the right; soul shards washed out; the settings window unrefined, not working right and not movable; the overall layout not matching the reference. This pass also re-indexed the whole repo (the 0.2.x work was done through Cursor).

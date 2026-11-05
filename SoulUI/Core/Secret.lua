@@ -42,13 +42,13 @@ function Secret.AlphaFromBool(region, flag, alphaTrue, alphaFalse)
 	end
 end
 
--- 12.1 field reports put the "false" result in the second argument and the
--- "true" result in the third. If a test shows the colors swapped, swap the
--- call sites rather than this helper.
+-- Callers pass (flag, ifFalse, ifTrue). The engine function takes
+-- (flag, ifTrue, ifFalse); 0.2.x passed them straight through, which painted
+-- interruptible casts gray and uninterruptible ones in the accent color.
 function Secret.PickColor(flag, ifFalse, ifTrue)
 	if type(flag) == "nil" then return ifFalse end
 	if Secret.IsSecret(flag) and C_CurveUtil and C_CurveUtil.EvaluateColorFromBoolean then
-		return C_CurveUtil.EvaluateColorFromBoolean(flag, ifFalse, ifTrue)
+		return C_CurveUtil.EvaluateColorFromBoolean(flag, ifTrue, ifFalse)
 	end
 	if Secret.IsSecret(flag) then return ifFalse end
 	if flag then return ifTrue end

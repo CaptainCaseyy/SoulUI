@@ -30,6 +30,8 @@ end
 
 SoulUI.Defaults.UnitFrames = {
 	hideBlizzard = true,
+	dispelGlow = true,  -- outline when a friend has a debuff you can cleanse
+	purgeGlow = true,   -- outline when an enemy target/focus has a buff you can purge or soothe
 	units = {
 		player = Unit(225, 68, -400, -300, { showCast = false }),
 		target = Unit(225, 68, 400, -300),

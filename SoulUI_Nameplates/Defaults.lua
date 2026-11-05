@@ -11,4 +11,10 @@ SoulUI.Defaults.Nameplates = {
 	manageCVars = true,
 	showAll = false,
 	stack = true,
+	showDebuffs = true,  -- your debuffs on the enemy
+	debuffSize = 20,     -- icon sizes apply after /reload
+	debuffMax = 5,
+	purge = "auto",      -- auto (only if you can purge/soothe) | always | off
+	purgeGlow = true,    -- outline the plate while it has something you can remove
+	purgeSize = 20,
 }

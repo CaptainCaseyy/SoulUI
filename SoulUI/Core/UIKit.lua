@@ -219,6 +219,10 @@ function UI.Button(parent, label, width, height, onClick, style)
 			face:SetColorTexture(1, 1, 1, hovered and 0.06 or 0)
 			outline:SetColor(1, 1, 1, 0)
 			text:SetTextColor(hovered and 1 or UI.C.dim[1], hovered and 1 or UI.C.dim[2], hovered and 1 or UI.C.dim[3])
+		elseif style == "outline" then
+			face:SetColorTexture(r, g, b, hovered and 0.18 or 0.06)
+			outline:SetColor(r, g, b, hovered and 1 or 0.75)
+			text:SetTextColor(hovered and 1 or r, hovered and 1 or g, hovered and 1 or b)
 		elseif style == "danger" then
 			face:SetColorTexture(hovered and 0.45 or 0.3, 0.08, 0.08, 1)
 			outline:SetColor(1, 0.3, 0.3, 0.35)

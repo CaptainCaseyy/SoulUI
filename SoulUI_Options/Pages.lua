@@ -89,6 +89,60 @@ local function BuildLook(col)
 	})
 end
 
+local function CastCfg() return Soul.Cast.Settings() end
+local function RefreshCasts()
+	Soul:Fire("ThemeChanged")
+end
+
+local function CastColor(key)
+	return {
+		get = function() local c = CastCfg()[key] return c[1], c[2], c[3] end,
+		set = function(r, g, b) CastCfg()[key] = { r, g, b } RefreshCasts() end,
+	}
+end
+
+local function BuildCasts(col)
+	W.Note(col, "Enemy cast bars on nameplates, target and focus. Interruptible casts use the first color; when your interrupt is on cooldown they switch to the second, so you know to leave it to someone else. Casts that cannot be interrupted turn gray with a lock. Spells the game marks as important get a red outline, and an important cast that cannot be interrupted gets a STUN badge: a stun, knockback or incapacitate is the answer (bosses are immune).")
+	W.Section(col, "Colors")
+	local interruptible = CastColor("interruptible")
+	local cooldown = CastColor("kickCooldown")
+	local locked = CastColor("locked")
+	local important = CastColor("important")
+	W.Row2(col, { type = "color", label = "Interruptible", get = interruptible.get, set = interruptible.set },
+		{ type = "color", label = "Interrupt on cooldown", get = cooldown.get, set = cooldown.set,
+			disabled = function() return not CastCfg().kickColoring end })
+	W.Row2(col, { type = "color", label = "Not interruptible", get = locked.get, set = locked.set },
+		{ type = "color", label = "Important outline", get = important.get, set = important.set,
+			disabled = function() return not CastCfg().showImportant end })
+	W.Section(col, "Signals")
+	W.Row2(col, {
+		type = "toggle", label = "Track my interrupt cooldown",
+		tooltip = "Colors interruptible casts differently while your interrupt (Kick, Pummel, Counterspell...) is on cooldown.",
+		get = function() return CastCfg().kickColoring end,
+		set = function(v) CastCfg().kickColoring = v and true or false RefreshCasts() end,
+	}, {
+		type = "toggle", label = "Lock icon on uninterruptible",
+		get = function() return CastCfg().showLock end,
+		set = function(v) CastCfg().showLock = v and true or false RefreshCasts() end,
+	})
+	W.Row2(col, {
+		type = "toggle", label = "Outline important casts",
+		get = function() return CastCfg().showImportant end,
+		set = function(v) CastCfg().showImportant = v and true or false RefreshCasts() end,
+	}, {
+		type = "toggle", label = "STUN badge",
+		tooltip = "Shown when a cast is both important and uninterruptible.",
+		get = function() return CastCfg().showStun end,
+		set = function(v) CastCfg().showStun = v and true or false RefreshCasts() end,
+	})
+	W.Buttons(col, {
+		{ text = "Reset cast colors", width = 180, click = function()
+			Soul:Theme().cast = nil
+			RefreshCasts()
+		end },
+	})
+end
+
 local function BuildModules(col)
 	W.Note(col, "Turn whole modules on or off. The addon list changes, so a reload is needed. Turn EllesmereUI's matching modules off while SoulUI's are on, or both will draw.")
 	W.Section(col, "Modules")
@@ -143,12 +197,13 @@ end
 Soul:RegisterPage({
 	key = "general",
 	title = "General",
-	description = "Accent color, font, bar texture, modules and test tools.",
+	description = "Accent color, font, bar texture, cast colors, modules and test tools.",
 	group = "SoulUI",
 	groupOrder = 1,
 	order = 1,
 	tabs = {
 		{ key = "look", title = "Look", build = BuildLook },
+		{ key = "casts", title = "Casts", build = BuildCasts, preview = function(...) return Soul.Previews.Casts(...) end },
 		{ key = "modules", title = "Modules", build = BuildModules },
 		{ key = "tools", title = "Tools", build = BuildTools },
 	},

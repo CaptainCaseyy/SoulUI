@@ -175,12 +175,21 @@ local function ShowCast(frame, channel, empower)
 	if cast.Bar.SetToTargetValue then
 		cast.Bar:SetToTargetValue()
 	end
-	TintCast(cast.Bar, notInterruptible)
 	local cfg = frame._cfg
-	if cfg and type(cfg.castColor) == "table" then
-		cast.Bar:SetStatusBarColor(cfg.castColor[1], cfg.castColor[2], cfg.castColor[3])
+	local custom = cfg and type(cfg.castColor) == "table" and cfg.castColor or nil
+	if unit == "player" or unit == "vehicle" or unit == "pet" then
+		TintCast(cast.Bar, notInterruptible)
+		if custom then cast.Bar:SetStatusBarColor(custom[1], custom[2], custom[3]) end
+		Soul.Secret.AlphaFromBool(cast.Shield, notInterruptible, 1, 0)
+	else
+		-- Enemy casts: interruptible / kick on cooldown / locked, important
+		-- outline and STUN badge (Core/Casts.lua). castColor replaces only the
+		-- interruptible color.
+		local spellID
+		if channel or empower then spellID = info[8] else spellID = info[9] end
+		cast.Shield:SetAlpha(0)
+		Soul.Cast.Paint(cast, cast.Bar, notInterruptible, spellID, custom)
 	end
-	Soul.Secret.AlphaFromBool(cast.Shield, notInterruptible, 1, 0)
 	if cast.TimeBinding then
 		pcall(cast.TimeBinding.SetDuration, cast.TimeBinding, duration)
 		pcall(cast.TimeBinding.Enable, cast.TimeBinding)
@@ -198,11 +207,15 @@ local function ShowCastPreview(frame)
 	cast.Bar:SetMinMaxValues(0, 1)
 	cast.Bar:SetValue(0.65)
 	local cfg = frame._cfg
-	if cfg and type(cfg.castColor) == "table" then
-		cast.Bar:SetStatusBarColor(cfg.castColor[1], cfg.castColor[2], cfg.castColor[3])
+	if frame._soulUnit == "player" then
+		if cfg and type(cfg.castColor) == "table" then
+			cast.Bar:SetStatusBarColor(cfg.castColor[1], cfg.castColor[2], cfg.castColor[3])
+		else
+			local r, g, b = Soul:Accent()
+			cast.Bar:SetStatusBarColor(r, g, b)
+		end
 	else
-		local r, g, b = Soul:Accent()
-		cast.Bar:SetStatusBarColor(r, g, b)
+		Soul.Cast.Preview(cast, cast.Bar, "interruptible")
 	end
 	cast:Show()
 end
@@ -231,13 +244,26 @@ local function RefreshCast(frame)
 	end
 end
 
+-- Purge outline only makes sense on something you can attack.
+local function UpdatePurgeGlow(frame)
+	if not frame.PurgeGlow then return end
+	local unit = frame._soulUnit
+	local db = DB()
+	local magic, enrage = Soul.Auras.OffensiveDispel()
+	local can = unit and UnitExists(unit) and UnitCanAttack("player", unit)
+	local show = db.purgeGlow ~= false and (magic or enrage) and not Soul.Secret.IsSecret(can) and can and true or false
+	Soul.Auras.SetShown(frame.PurgeGlow, show)
+end
+
 local function UpdateFrame(frame, event)
 	UpdateHealth(frame)
 	UpdatePower(frame)
 	UpdateName(frame)
+	if event == "SHOW" then UpdatePurgeGlow(frame) end
 	if event == "SHOW" or (type(event) == "string" and event:find("SPELLCAST", 1, true)) then
 		if CAST_END[event] then
 			frame._soulCastTries = nil
+			Soul.Cast.Clear(frame.Cast)
 			if frame._soulPreviewCast then
 				ShowCastPreview(frame)
 			else
@@ -293,6 +319,12 @@ local function CreateUnitFrame(unit, parent)
 	health:SetPoint("TOPLEFT")
 	health:SetPoint("TOPRIGHT")
 	frame.Health = health
+	-- Dispel outlines (Core/Auras.lua): a debuff you can cleanse on a friend,
+	-- or a buff you can purge / soothe on an enemy target or focus.
+	frame.DispelGlow = Soul.Auras.Highlight(health, unit, "HARMFUL|RAID_PLAYER_DISPELLABLE", { 0.8, 0.35, 1 }, 2)
+	if unit == "target" or unit == "focus" then
+		frame.PurgeGlow = Soul.Auras.Highlight(health, unit, "HELPFUL|DISPELLABLE", { 0.25, 0.65, 1 }, 2)
+	end
 	local fill = health:GetStatusBarTexture()
 	local clip = CreateFrame("Frame", nil, health)
 	clip:SetClipsChildren(true)
@@ -469,6 +501,10 @@ function UF:Layout(unit)
 		end
 		frame:SetSize(live.width, height)
 		frame.Health:SetHeight(live.height)
+		Soul.Auras.Refit(frame.DispelGlow, frame.Health)
+		Soul.Auras.Refit(frame.PurgeGlow, frame.Health)
+		Soul.Auras.SetShown(frame.DispelGlow, DB().dispelGlow ~= false)
+		UpdatePurgeGlow(frame)
 		frame.Power:SetShown(live.showPower and true or false)
 		if live.showPower then
 			frame.Power:ClearAllPoints()
@@ -516,6 +552,8 @@ function UF:Layout(unit)
 		local castW = live.castWidth or live.width
 		frame.Cast:SetSize(castW, castH)
 		frame.Cast.Icon:SetSize(castH, castH)
+		Soul.Cast.Decorate(frame.Cast, frame.Cast.Bar)
+		Soul.Cast.Size(frame.Cast, castH)
 		frame.Cast.Bar:ClearAllPoints()
 		frame.Cast.Bar:SetPoint("TOPLEFT", frame.Cast.Icon, "TOPRIGHT", 1, 0)
 		frame.Cast.Bar:SetPoint("BOTTOMRIGHT")
@@ -706,6 +744,16 @@ function UF:OnEnable()
 	self:RegisterEvent("PLAYER_TARGET_CHANGED", OnEvent)
 	self:RegisterEvent("PLAYER_FOCUS_CHANGED", OnEvent)
 	self:RegisterEvent("PLAYER_ENTERING_WORLD", OnEvent)
+	self:RegisterEvent("SPELL_UPDATE_COOLDOWN", function()
+		local ready
+		for n = 1, #UNITS do
+			local live = UF.frames[UNITS[n]]
+			if live and live.Cast:IsShown() and live.Cast._soulCastState then
+				ready = ready or Soul.Cast.KickReady()
+				Soul.Cast.Recolor(live.Cast, live.Cast.Bar, ready)
+			end
+		end
+	end)
 	self:RegisterEvent("UNIT_PET", function(_, _, unit)
 		if unit == "player" then
 			local pet = UF.frames.pet

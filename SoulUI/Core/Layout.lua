@@ -83,11 +83,9 @@ function Soul:BuildDefaultLayout(profile)
 	local col = Round(0.77 * P)
 	local leftX = -W / 2 + Round(0.2 * P) + col / 2
 
-	-- Party strip at the top left, raid under it.
-	local partyW = Round(1.9 * P)
-	local partyH = Round(1.76 * P)
-	local partyX = -W / 2 + Round(0.6 * P) + (partyW * 5 + g * 4) / 2
-	local partyY = H / 2 - Round(2.65 * P) - partyH / 2
+	-- Party column right of the left bar columns (vertical by default), raid
+	-- top left.
+	local partyX, partyY, partyW, partyH = Soul:DefaultPartySpot(W, H, P, g, col)
 	local raidW = Round(1.9 * P)
 	local raidH = Round(1.0 * P)
 
@@ -155,12 +153,14 @@ function Soul:BuildDefaultLayout(profile)
 	local group = Section(modules, "GroupFrames")
 	local party = Section(group, "party")
 	party.width, party.height, party.spacing, party.showPower = partyW, partyH, 2, false
+	party.orientation = "vertical"
 	party.x, party.y = Soul.Pixel:Scale(partyX), Soul.Pixel:Scale(partyY)
 	Pos(positions, "GroupFrames:party", partyX, partyY)
+	profile._partyVertical = true
 	local raid = Section(group, "raid")
 	raid.width, raid.height, raid.spacing, raid.showPower = raidW, raidH, 1, false
 	local raidX = -W / 2 + Round(0.6 * P) + (raidW * 5 + g * 4) / 2
-	local raidY = partyY - partyH / 2 - Round(0.3 * P) - (raidH * 8 + g * 7) / 2
+	local raidY = H / 2 - Round(2.65 * P) - (raidH * 8 + g * 7) / 2
 	raid.x, raid.y = Soul.Pixel:Scale(raidX), Soul.Pixel:Scale(raidY)
 	Pos(positions, "GroupFrames:raid", raidX, raidY)
 
@@ -180,10 +180,48 @@ function Soul:BuildDefaultLayout(profile)
 	return true
 end
 
+-- Party column: right of the three left-edge bar columns, upper half.
+function Soul:DefaultPartySpot(W, H, P, g, col)
+	local partyW = Round(1.9 * P)
+	local partyH = Round(1.3 * P)
+	local columnsRight = -W / 2 + Round(0.2 * P) + 3 * (col + g)
+	local partyX = columnsRight + Round(0.5 * P) + partyW / 2
+	local stack = partyH * 5 + 2 * 4
+	local partyY = H / 2 - Round(4.2 * P) - stack / 2
+	return partyX, partyY, partyW, partyH
+end
+
+-- 0.4.0: party frames became vertical by default. Profiles that already had
+-- the 0.3.0 layout switch once and move the party column next to the bars.
+local function PartyVertical(profile)
+	if profile._partyVertical then return end
+	local W, H = UIParent:GetWidth(), UIParent:GetHeight()
+	if type(W) ~= "number" or W < 400 then return end
+	profile._partyVertical = true
+	local g = Soul.Pixel:Scale(1)
+	local B = math.floor(H * 0.0335 + 0.5)
+	if B < 34 then B = 34 elseif B > 50 then B = 50 end
+	local P = B + g
+	local col = Round(0.77 * P)
+	local x, y, w, h = Soul:DefaultPartySpot(W, H, P, g, col)
+	profile.modules = profile.modules or {}
+	local group = Section(profile.modules, "GroupFrames")
+	local party = Section(group, "party")
+	party.orientation = "vertical"
+	party.width, party.height = w, h
+	party.x, party.y = Soul.Pixel:Scale(x), Soul.Pixel:Scale(y)
+	profile.unlock = profile.unlock or {}
+	profile.unlock.positions = profile.unlock.positions or {}
+	Pos(profile.unlock.positions, "GroupFrames:party", x, y)
+end
+
 -- Login: write the default layout once per layout version.
 function Soul:ApplyDefaultLayout()
 	local profile = self:ActiveProfile()
-	if profile._layoutVersion == LAYOUT_VERSION then return end
+	if profile._layoutVersion == LAYOUT_VERSION then
+		PartyVertical(profile)
+		return
+	end
 	if self:BuildDefaultLayout(profile) then
 		self:Print("Applied the SoulUI default layout. /soul move to adjust it.")
 	end

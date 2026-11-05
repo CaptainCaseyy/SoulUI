@@ -120,6 +120,11 @@ local function ConfigureAuras(button, cfg)
 	end
 	if not container then return end
 	button._soulAuras = container
+	if not button._soulDispelGlow and not InCombatLockdown() then
+		-- Outline the whole frame while the unit has a debuff you can cleanse.
+		button._soulDispelGlow = Soul.Auras.Highlight(button, button:GetAttribute("unit"), "HARMFUL|RAID_PLAYER_DISPELLABLE", { 0.8, 0.35, 1 }, 2)
+	end
+	Soul.Auras.SetShown(button._soulDispelGlow, cfg.dispelGlow ~= false)
 	if not cfg.showAuras then
 		container:Hide()
 		return
@@ -164,6 +169,10 @@ local function LayoutChrome(button, cfg)
 	local size = cfg.font or 12
 	Soul:ApplyFont(button.Name, size, "OUTLINE")
 	Soul:ApplyFont(button.HealthText, size, "OUTLINE")
+	if button._soulDispelGlow then
+		Soul.Auras.Refit(button._soulDispelGlow, button)
+		Soul.Auras.SetShown(button._soulDispelGlow, cfg.dispelGlow ~= false)
+	end
 	local container = button._soulAuras
 	if container then
 		if cfg.showAuras then
@@ -320,6 +329,7 @@ local function StyleButton(button, cfg)
 		if container and container.SetUnit then
 			pcall(container.SetUnit, container, value or "none")
 		end
+		Soul.Auras.SetUnit(self._soulDispelGlow, value)
 		if self:IsShown() then UpdateButton(self) end
 	end)
 	button:HookScript("OnShow", function(self)
@@ -335,7 +345,10 @@ end
 local function GridSize(kind, cfg)
 	local gap = cfg.spacing or 2
 	if kind == "party" then
-		return cfg.width * 5 + gap * 4, cfg.height
+		if cfg.orientation == "horizontal" then
+			return cfg.width * 5 + gap * 4, cfg.height
+		end
+		return cfg.width, cfg.height * 5 + gap * 4
 	end
 	return cfg.width * 5 + gap * 4, cfg.height * 8 + gap * 7
 end
@@ -368,9 +381,17 @@ local function ConfigureHeader(header, kind, cfg)
 	if kind == "party" then
 		header:SetAttribute("showParty", true)
 		header:SetAttribute("showRaid", false)
-		header:SetAttribute("point", "LEFT")
-		header:SetAttribute("xOffset", gap)
-		header:SetAttribute("yOffset", 0)
+		-- Vertical (default): units stack downward from the top. Horizontal:
+		-- a strip growing right.
+		if cfg.orientation == "horizontal" then
+			header:SetAttribute("point", "LEFT")
+			header:SetAttribute("xOffset", gap)
+			header:SetAttribute("yOffset", 0)
+		else
+			header:SetAttribute("point", "TOP")
+			header:SetAttribute("xOffset", 0)
+			header:SetAttribute("yOffset", -gap)
+		end
 		header:SetAttribute("maxColumns", 1)
 		header:SetAttribute("unitsPerColumn", 5)
 	else

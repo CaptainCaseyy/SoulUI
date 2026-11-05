@@ -5,6 +5,8 @@ SoulUI.Defaults.GroupFrames = {
 	hideBlizzard = true,
 	party = {
 		enabled = true,
+		orientation = "vertical", -- vertical | horizontal
+		dispelGlow = true,
 		width = 220,
 		height = 48,
 		spacing = 2,
@@ -19,6 +21,7 @@ SoulUI.Defaults.GroupFrames = {
 	},
 	raid = {
 		enabled = true,
+		dispelGlow = true,
 		width = 120,
 		height = 64,
 		spacing = 1,

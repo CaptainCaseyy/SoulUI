@@ -50,11 +50,24 @@ local function ApplyUF() Apply("UnitFrames", "all") end
 
 local function BuildUnitFrames(col)
 	if Missing(col, "UnitFrames", "Unit Frames") then return end
+	W.Section(col, "All frames")
 	W.Row(col, {
 		type = "toggle", label = "Hide Blizzard player, target, focus and pet frames",
 		get = function() return UF().hideBlizzard end,
 		set = function(v) UF().hideBlizzard = Bool(v) ApplyUF() end,
 	})
+	W.Row2(col, {
+		type = "toggle", label = "Cleanse outline",
+		tooltip = "Outlines a friendly frame (you, a friendly target or focus) while it has a debuff you can remove, tinted by the debuff type.",
+		get = function() return UF().dispelGlow ~= false end,
+		set = function(v) UF().dispelGlow = Bool(v) ApplyUF() end,
+	}, {
+		type = "toggle", label = "Purge outline",
+		tooltip = "Outlines an enemy target or focus while it has a buff you can purge, spellsteal or soothe. Only for classes that can.",
+		get = function() return UF().purgeGlow ~= false end,
+		set = function(v) UF().purgeGlow = Bool(v) ApplyUF() end,
+	})
+	W.Section(col, "Edit")
 	W.Selector(col, UNIT_OPTIONS, function() return ufState.unit end, function(v) ufState.unit = v end)
 	local function off() return not Unit().enabled end
 
@@ -178,7 +191,9 @@ Soul:RegisterPage({
 	group = "Frames",
 	groupOrder = 2,
 	order = 1,
+	addon = "SoulUI_UnitFrames",
 	build = BuildUnitFrames,
+	preview = function(...) return Soul.Previews.UnitFrame(function() return ufState.unit end, function() return Unit() end)(...) end,
 })
 
 ------------------------------------------------------------------------------
@@ -221,6 +236,46 @@ local function BuildNameplates(col)
 		get = function() return NP().castHeight end,
 		set = function(v) NP().castHeight = v ApplyNP() end,
 	})
+	W.Section(col, "Auras")
+	W.Row2(col, {
+		type = "toggle", label = "Your debuffs", disabled = off,
+		get = function() return NP().showDebuffs ~= false end,
+		set = function(v) NP().showDebuffs = Bool(v) ApplyNP() end,
+	}, {
+		type = "slider", label = "Most debuffs", min = 1, max = 8, step = 1,
+		disabled = function() return off() or NP().showDebuffs == false end,
+		tooltip = "Applies after /reload.",
+		get = function() return NP().debuffMax or 5 end,
+		set = function(v) NP().debuffMax = v ApplyNP() end,
+	})
+	W.Row2(col, {
+		type = "dropdown", label = "Purgeable buffs", width = 190, disabled = off,
+		tooltip = "Buffs you can remove: magic (Purge, Dispel Magic, Spellsteal, Consume Magic) and enrage (Soothe, Tranquilizing Shot).",
+		items = {
+			{ value = "auto", label = "If I can purge" },
+			{ value = "always", label = "Always" },
+			{ value = "off", label = "Off" },
+		},
+		get = function() return NP().purge or "auto" end,
+		set = function(v) NP().purge = v ApplyNP() end,
+	}, {
+		type = "toggle", label = "Outline the plate",
+		disabled = function() return off() or NP().purge == "off" end,
+		get = function() return NP().purgeGlow ~= false end,
+		set = function(v) NP().purgeGlow = Bool(v) ApplyNP() end,
+	})
+	W.Row2(col, {
+		type = "slider", label = "Debuff icon size", min = 12, max = 40, step = 1, disabled = off,
+		tooltip = "Applies after /reload.",
+		get = function() return NP().debuffSize or 20 end,
+		set = function(v) NP().debuffSize = v ApplyNP() end,
+	}, {
+		type = "slider", label = "Purge icon size", min = 12, max = 40, step = 1, disabled = off,
+		tooltip = "Applies after /reload.",
+		get = function() return NP().purgeSize or 20 end,
+		set = function(v) NP().purgeSize = v ApplyNP() end,
+	})
+	W.Note(col, "Friendly nameplates stay Blizzard's: inside dungeons and raids the game does not let addons change them. Friendly debuffs you can cleanse are outlined on the party, raid and unit frames instead.")
 	W.Section(col, "Game settings")
 	W.Row2(col, {
 		type = "toggle", label = "Turn on enemy nameplates",
@@ -242,11 +297,13 @@ end
 Soul:RegisterPage({
 	key = "nameplates",
 	title = "Nameplates",
-	description = "Enemy and neutral plates: size, cast bar, names and stacking.",
+	description = "Enemy and neutral plates: size, cast bar, your debuffs, purgeable buffs and stacking.",
 	group = "Frames",
 	groupOrder = 2,
 	order = 2,
+	addon = "SoulUI_Nameplates",
 	build = BuildNameplates,
+	preview = function(...) return Soul.Previews.Nameplate(...) end,
 })
 
 ------------------------------------------------------------------------------
@@ -269,6 +326,17 @@ local function GroupTab(kind)
 			})
 		end
 		W.Section(col, kind == "party" and "Party" or "Raid")
+		if kind == "party" then
+			W.Row(col, {
+				type = "dropdown", label = "Layout", width = 190, disabled = off,
+				items = {
+					{ value = "vertical", label = "Vertical (stacked)" },
+					{ value = "horizontal", label = "Horizontal (strip)" },
+				},
+				get = function() return cfg().orientation or "vertical" end,
+				set = function(v) cfg().orientation = v apply() end,
+			})
+		end
 		W.Row2(col, {
 			type = "toggle", label = "Enabled",
 			get = function() return cfg().enabled end,
@@ -307,14 +375,22 @@ local function GroupTab(kind)
 			set = function(v) cfg().powerHeight = v apply() end,
 		})
 		W.Row2(col, {
+			type = "toggle", label = "Cleanse outline", disabled = off,
+			tooltip = "Outlines the frame while that player has a debuff you can remove, tinted by debuff type.",
+			get = function() return cfg().dispelGlow ~= false end,
+			set = function(v) cfg().dispelGlow = Bool(v) apply() end,
+		}, {
 			type = "toggle", label = "Dispel icons", disabled = off,
 			get = function() return cfg().showAuras end,
 			set = function(v) cfg().showAuras = Bool(v) apply() end,
-		}, kind == "party" and {
-			type = "toggle", label = "Show while solo", disabled = off,
-			get = function() return cfg().showSolo end,
-			set = function(v) cfg().showSolo = Bool(v) apply() end,
-		} or nil)
+		})
+		if kind == "party" then
+			W.Row(col, {
+				type = "toggle", label = "Show while solo", disabled = off,
+				get = function() return cfg().showSolo end,
+				set = function(v) cfg().showSolo = Bool(v) apply() end,
+			})
+		end
 		EditButton(col)
 	end
 end
@@ -326,9 +402,10 @@ Soul:RegisterPage({
 	group = "Frames",
 	groupOrder = 2,
 	order = 3,
+	addon = "SoulUI_GroupFrames",
 	tabs = {
-		{ key = "party", title = "Party", build = GroupTab("party") },
-		{ key = "raid", title = "Raid", build = GroupTab("raid") },
+		{ key = "party", title = "Party", build = GroupTab("party"), preview = function(...) return Soul.Previews.Group("party")(...) end },
+		{ key = "raid", title = "Raid", build = GroupTab("raid"), preview = function(...) return Soul.Previews.Group("raid")(...) end },
 	},
 })
 
@@ -461,9 +538,10 @@ Soul:RegisterPage({
 	group = "Combat",
 	groupOrder = 3,
 	order = 1,
+	addon = "SoulUI_ActionBars",
 	tabs = {
-		{ key = "bars", title = "Bars", build = BuildBarTab },
-		{ key = "style", title = "Style", build = BuildBarStyle },
+		{ key = "bars", title = "Bars", build = BuildBarTab, preview = function(...) return Soul.Previews.ActionBar(function() return Bar() end)(...) end },
+		{ key = "style", title = "Style", build = BuildBarStyle, preview = function(...) return Soul.Previews.ActionBar(function() return Bar() end)(...) end },
 	},
 })
 
@@ -630,8 +708,9 @@ Soul:RegisterPage({
 	group = "Combat",
 	groupOrder = 3,
 	order = 2,
+	addon = "SoulUI_ResourceBars",
 	tabs = {
-		{ key = "pips", title = "Class Resource", build = BuildPips },
+		{ key = "pips", title = "Class Resource", build = BuildPips, preview = function(...) return Soul.Previews.Pips(...) end },
 		{ key = "cast", title = "Cast Bar", build = BuildCast },
 		{ key = "power", title = "Power & GCD", build = BuildPower },
 	},
@@ -687,6 +766,85 @@ local function BuildMeters(col)
 		get = function() return DMdb().bgAlpha or 0.55 end,
 		set = function(v) DMdb().bgAlpha = v ApplyDM() end,
 	})
+	W.Section(col, "Bars")
+	W.Row2(col, {
+		type = "dropdown", label = "Numbers", width = 180, disabled = off,
+		items = {
+			{ value = "both", label = "138M (412K)" },
+			{ value = "pipe", label = "138M | 412K" },
+			{ value = "total", label = "138M" },
+			{ value = "persec", label = "412K per second" },
+			{ value = "percent", label = "138M  28%" },
+		},
+		get = function() return DMdb().valueFormat or "both" end,
+		set = function(v) DMdb().valueFormat = v ApplyDM() end,
+	}, {
+		type = "statusbar", label = "Bar texture", disabled = off,
+		get = function() return DMdb().texture or Soul:Theme().statusbar end,
+		set = function(v) DMdb().texture = v ApplyDM() end,
+	})
+	W.Row2(col, {
+		type = "toggle", label = "Spec icons", disabled = off,
+		get = function() return DMdb().showIcons ~= false end,
+		set = function(v) DMdb().showIcons = Bool(v) ApplyDM() end,
+	}, {
+		type = "toggle", label = "Rank numbers", disabled = off,
+		get = function() return DMdb().showRank end,
+		set = function(v) DMdb().showRank = Bool(v) ApplyDM() end,
+	})
+	W.Row2(col, {
+		type = "toggle", label = "Class colors", disabled = off,
+		tooltip = "Off: every bar uses the accent color.",
+		get = function() return DMdb().classColors ~= false end,
+		set = function(v) DMdb().classColors = Bool(v) ApplyDM() end,
+	}, {
+		type = "slider", label = "Bar opacity", min = 0.2, max = 1, step = 0.05, disabled = off,
+		get = function() return DMdb().barAlpha or 1 end,
+		set = function(v) DMdb().barAlpha = v ApplyDM() end,
+	})
+	W.Row2(col, {
+		type = "slider", label = "Row gap", min = 0, max = 6, step = 1, disabled = off,
+		get = function() return DMdb().rowGap or 1 end,
+		set = function(v) DMdb().rowGap = v ApplyDM() end,
+	}, {
+		type = "slider", label = "Text size (0 = auto)", min = 0, max = 24, step = 1, disabled = off,
+		get = function() return DMdb().fontSize or 0 end,
+		set = function(v) DMdb().fontSize = v ApplyDM() end,
+	})
+	W.Row(col, {
+		type = "toggle", label = "Mark my row", disabled = off,
+		get = function() return DMdb().markSelf ~= false end,
+		set = function(v) DMdb().markSelf = Bool(v) ApplyDM() end,
+	})
+	W.Section(col, "Header")
+	W.Row2(col, {
+		type = "slider", label = "Height", min = 14, max = 40, step = 1, disabled = off,
+		get = function() return DMdb().headerHeight or 22 end,
+		set = function(v) DMdb().headerHeight = v ApplyDM() end,
+	}, {
+		type = "color", label = "Header color", disabled = off,
+		get = function() local c = DMdb().headerColor or { 0.106, 0.106, 0.106 } return c[1], c[2], c[3] end,
+		set = function(r, g, b) DMdb().headerColor = { r, g, b, 1 } ApplyDM() end,
+	})
+	W.Row2(col, {
+		type = "toggle", label = "Accent title", disabled = off,
+		get = function() return DMdb().headerAccent ~= false end,
+		set = function(v) DMdb().headerAccent = Bool(v) ApplyDM() end,
+	}, {
+		type = "toggle", label = "Accent underline", disabled = off,
+		get = function() return DMdb().headerLine ~= false end,
+		set = function(v) DMdb().headerLine = Bool(v) ApplyDM() end,
+	})
+	W.Row2(col, {
+		type = "toggle", label = "Buttons only on hover", disabled = off,
+		get = function() return DMdb().headerIconsOnHover end,
+		set = function(v) DMdb().headerIconsOnHover = Bool(v) ApplyDM() end,
+	}, {
+		type = "toggle", label = "Window border", disabled = off,
+		get = function() return DMdb().border end,
+		set = function(v) DMdb().border = Bool(v) ApplyDM() end,
+	})
+	W.Section(col, "Updates")
 	W.Row(col, {
 		type = "slider", label = "Updates per second", min = 1, max = 4, step = 1, disabled = off,
 		get = function()
@@ -740,5 +898,7 @@ Soul:RegisterPage({
 	group = "Combat",
 	groupOrder = 3,
 	order = 3,
+	addon = "SoulUI_DamageMeters",
 	build = BuildMeters,
+	preview = function(...) return Soul.Previews.Meter(...) end,
 })

@@ -2,13 +2,14 @@
 ## Title: SoulUI Options
 ## Notes: SoulUI editor
 ## Author: SoulBound
-## Version: 0.3.0
+## Version: 0.4.0
 ## Dependencies: SoulUI
 ## LoadOnDemand: 1
 ## Category: SoulUI
 ## Group: SoulUI
 
 Widgets.lua
+Previews.lua
 Pages.lua
 PagesModules.lua
 Panel.lua

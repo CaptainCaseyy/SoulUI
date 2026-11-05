@@ -36,6 +36,25 @@ local function DB()
 	return Soul:ModuleDB("Nameplates")
 end
 
+-- Purge row and outline follow the setting: "auto" shows them only when you
+-- know an offensive dispel (Purge, Dispel Magic, Spellsteal, Soothe,
+-- Tranquilizing Shot...), "always" for everyone, "off" never.
+local function PurgeWanted()
+	local mode = DB().purge or "auto"
+	if mode == "off" then return false end
+	if mode == "always" then return true end
+	local magic, enrage = Soul.Auras.OffensiveDispel()
+	return magic or enrage
+end
+
+local function ApplyAuraVisibility(visual)
+	local cfg = DB()
+	Soul.Auras.SetShown(visual.Debuffs, cfg.showDebuffs ~= false)
+	local purge = PurgeWanted()
+	Soul.Auras.SetShown(visual.Purge, purge)
+	Soul.Auras.SetShown(visual.PurgeGlow, purge and cfg.purgeGlow ~= false)
+end
+
 local function Hostile(unit)
 	local reaction = UnitReaction(unit, "player")
 	-- A secret reaction means we cannot tell friend from foe. Leave Blizzard's plate alone.
@@ -145,11 +164,10 @@ local function ShowCast(visual, channel)
 		return
 	end
 	if visual.CastBar.SetToTargetValue then visual.CastBar:SetToTargetValue() end
-	local r, g, b = Soul:Accent()
-	local picked = Soul.Secret.PickColor(notInterruptible, CreateColor(r, g, b, 1), CreateColor(0.45, 0.45, 0.48, 1))
-	if picked and picked.GetRGB then
-		visual.CastBar:SetStatusBarColor(picked:GetRGB())
-	end
+	-- spellID may be secret: pick the index without truth-testing the value.
+	local spellID
+	if channel then spellID = info[8] else spellID = info[9] end
+	Soul.Cast.Paint(visual.Cast, visual.CastBar, notInterruptible, spellID)
 	visual.Cast:Show()
 end
 
@@ -157,6 +175,7 @@ local function RefreshCast(visual)
 	local unit = visual.unit
 	if not unit or not DB().showCast then
 		visual.Cast:Hide()
+		Soul.Cast.Clear(visual.Cast)
 		return
 	end
 	local casting = UnitCastingInfo(unit)
@@ -178,6 +197,7 @@ local function UpdateVisual(visual, event)
 	if not event or event == "SHOW" or (type(event) == "string" and event:find("SPELLCAST", 1, true)) then
 		if CAST_END[event] then
 			visual.Cast:Hide()
+			Soul.Cast.Clear(visual.Cast)
 		elseif event == "UNIT_SPELLCAST_START" then
 			ShowCast(visual, false)
 		elseif event == "UNIT_SPELLCAST_CHANNEL_START" or event == "UNIT_SPELLCAST_EMPOWER_START" then
@@ -201,6 +221,8 @@ local function ApplyStyle(visual)
 	Soul:ApplyFont(visual.HealthText, math.max(9, cfg.height - 5), "OUTLINE")
 	visual.Cast:SetHeight(cfg.castHeight)
 	visual.CastIcon:SetSize(cfg.castHeight, cfg.castHeight)
+	Soul.Cast.Decorate(visual.Cast, visual.CastBar)
+	Soul.Cast.Size(visual.Cast, cfg.castHeight)
 	local tex = Soul:StatusbarTexture()
 	visual.Health:SetStatusBarTexture(tex)
 	visual.CastBar:SetStatusBarTexture(tex)
@@ -259,6 +281,33 @@ local function BuildPlate(index)
 	return visual
 end
 
+-- Aura rows are built lazily the first time a plate is used out of combat
+-- (and for any plate still missing them when combat ends), so login does not
+-- build 90 containers at once. Sizes are fixed when the container is made.
+local function EnsureAuras(visual)
+	if visual._soulAuras or InCombatLockdown() then return end
+	visual._soulAuras = true
+	local health = visual.Health
+	local cfg = DB()
+	local debuffSize = cfg.debuffSize or 20
+	local purgeSize = cfg.purgeSize or 20
+	visual.Debuffs = Soul.Auras.Icons(visual, "none", {
+		{ key = "mine", filter = "HARMFUL|PLAYER", max = cfg.debuffMax or 5, size = debuffSize },
+	}, { point = "BOTTOMLEFT", relPoint = "TOPLEFT", x = 0, y = 3, width = cfg.width, height = debuffSize })
+	if visual.Debuffs then
+		visual.Debuffs:ClearAllPoints()
+		visual.Debuffs:SetPoint("BOTTOMLEFT", health, "TOPLEFT", 0, 3)
+	end
+	visual.Purge = Soul.Auras.Icons(visual, "none", {
+		{ key = "purge", filter = "HELPFUL|DISPELLABLE", max = 3, size = purgeSize, border = { 0.25, 0.65, 1 } },
+	}, { width = purgeSize * 3 + 6, height = purgeSize })
+	if visual.Purge then
+		visual.Purge:ClearAllPoints()
+		visual.Purge:SetPoint("LEFT", health, "RIGHT", 4, 0)
+	end
+	visual.PurgeGlow = Soul.Auras.Highlight(health, "none", "HELPFUL|DISPELLABLE", { 0.25, 0.65, 1 }, 2)
+end
+
 local function RestorePlate(plate)
 	if not plate or not hiddenBlizz[plate] then return end
 	local unitFrame = plate.UnitFrame
@@ -295,6 +344,9 @@ local function Release(visual)
 	visual.unit = nil
 	visual.plate = nil
 	visual.Highlight:Hide()
+	Soul.Auras.SetUnit(visual.Debuffs, "none")
+	Soul.Auras.SetUnit(visual.Purge, "none")
+	Soul.Auras.SetUnit(visual.PurgeGlow, "none")
 	if plate then RestorePlate(plate) end
 end
 
@@ -357,6 +409,11 @@ function NP:AddPlate(_, unit)
 	local level = plate:GetFrameLevel() or 1
 	visual:SetFrameLevel(level + 5)
 	ApplyStyle(visual)
+	EnsureAuras(visual)
+	Soul.Auras.SetUnit(visual.Debuffs, unit)
+	Soul.Auras.SetUnit(visual.Purge, unit)
+	Soul.Auras.SetUnit(visual.PurgeGlow, unit)
+	ApplyAuraVisibility(visual)
 	visual:Show()
 	UpdateVisual(visual, "SHOW")
 	MarkTarget()
@@ -407,6 +464,10 @@ function NP:Apply()
 		end
 		return
 	end
+	for i = 1, #pool do
+		if not InCombatLockdown() then ApplyAuraVisibility(pool[i]) end
+		if pool[i].PurgeGlow then Soul.Auras.Refit(pool[i].PurgeGlow, pool[i].Health) end
+	end
 	for _, visual in pairs(byUnit) do
 		ApplyStyle(visual)
 		if visual.unit then
@@ -421,12 +482,35 @@ function NP:OnInitialize()
 end
 
 function NP:OnEnable()
-	for i = 1, 20 do
+	for i = 1, 30 do
 		BuildPlate(i)
 	end
+	self:RegisterEvent("PLAYER_REGEN_ENABLED", function()
+		for _, visual in pairs(byUnit) do
+			if not visual._soulAuras then
+				EnsureAuras(visual)
+				Soul.Auras.SetUnit(visual.Debuffs, visual.unit)
+				Soul.Auras.SetUnit(visual.Purge, visual.unit)
+				Soul.Auras.SetUnit(visual.PurgeGlow, visual.unit)
+				ApplyAuraVisibility(visual)
+			end
+		end
+	end)
+	Soul.Auras.OnOffensiveChange(function()
+		Soul:RunAfterCombat("np:purge", function()
+			for i = 1, #pool do ApplyAuraVisibility(pool[i]) end
+		end)
+	end)
 	self:RegisterEvent("NAME_PLATE_UNIT_ADDED", function(mod, _, unit) mod:AddPlate(_, unit) end)
 	self:RegisterEvent("NAME_PLATE_UNIT_REMOVED", function(mod, _, unit) mod:RemovePlate(_, unit) end)
 	self:RegisterEvent("PLAYER_TARGET_CHANGED", function() MarkTarget() end)
+	-- Your interrupt coming off cooldown recolors casts already on screen.
+	self:RegisterEvent("SPELL_UPDATE_COOLDOWN", function()
+		local ready = Soul.Cast.KickReady()
+		for _, visual in pairs(byUnit) do
+			if visual.Cast:IsShown() then Soul.Cast.Recolor(visual.Cast, visual.CastBar, ready) end
+		end
+	end)
 	self:RegisterEvent("PLAYER_ENTERING_WORLD", function(mod)
 		local plates = C_NamePlate.GetNamePlates()
 		if type(plates) ~= "table" then return end

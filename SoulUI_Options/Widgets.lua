@@ -20,8 +20,8 @@ local UI = Soul.UI
 local W = {}
 Soul.Widgets = W
 
-local ROW_H = 44
-local PAD = 28
+local ROW_H = 42
+local PAD = 30
 
 W.searchIndex = {}
 
@@ -38,7 +38,33 @@ function W.Begin(parent, width, pageKey, tabKey)
 	}
 end
 
+-- Sections are cards: a slightly lighter panel behind the rows, opened by
+-- W.Section and closed by the next section or W.Finish.
+local function CloseCard(col)
+	local card = col.card
+	if not card then return end
+	col.y = col.y - 4
+	card:SetHeight(math.max(8, card._top - col.y))
+	col.card = nil
+	col.y = col.y - 14
+end
+
+local function OpenCard(col)
+	local card = CreateFrame("Frame", nil, col.parent)
+	card:SetFrameLevel(math.max(0, col.parent:GetFrameLevel()))
+	card:SetPoint("TOPLEFT", col.parent, "TOPLEFT", PAD - 8, col.y + 4)
+	card:SetPoint("TOPRIGHT", col.parent, "TOPRIGHT", -(PAD - 8), col.y + 4)
+	card._top = col.y + 4
+	local bg = card:CreateTexture(nil, "BACKGROUND")
+	bg:SetAllPoints()
+	bg:SetColorTexture(1, 1, 1, 0.028)
+	UI.Edge(card, 1, 1, 1, 0.055)
+	col.card = card
+	col.firstRow = true
+end
+
 function W.Finish(col)
+	CloseCard(col)
 	col.parent:SetHeight(math.max(40, math.abs(col.y) + 24))
 end
 
@@ -47,6 +73,7 @@ function W.Refresh(col)
 		local ok, err = pcall(col.refreshers[i])
 		if not ok then Soul:Debug("refresh", err) end
 	end
+	if col.onRefresh then pcall(col.onRefresh) end
 end
 
 local function AddRefresher(col, fn)
@@ -73,23 +100,21 @@ local function Index(col, label, row)
 	}
 end
 
-function W.Section(col, text)
-	col.y = col.y - 10
-	local font = UI.Text(col.parent, 12, UI.C.faint)
+function W.Section(col, text, hint)
+	CloseCard(col)
+	col.y = col.y - 6
+	local font = UI.Text(col.parent, 12, UI.C.dim)
 	font:SetText(string.upper(text))
-	font:SetPoint("TOPLEFT", col.parent, "TOPLEFT", PAD, col.y - 8)
-	local rule = col.parent:CreateTexture(nil, "ARTWORK")
-	rule:SetPoint("LEFT", font, "RIGHT", 10, 0)
-	rule:SetWidth(math.max(10, col.width - PAD * 2 - (font:GetStringWidth() or 60) - 10))
-	rule:SetHeight(1)
-	rule:SetColorTexture(1, 1, 1, 0.07)
-	local mark = col.parent:CreateTexture(nil, "ARTWORK")
-	mark:SetSize(3, 12)
-	mark:SetPoint("RIGHT", font, "LEFT", -7, 0)
-	UI.OnAccent(function(r, g, b) mark:SetColorTexture(r, g, b, 1) end)
-	col.y = col.y - 36
+	font:SetPoint("TOPLEFT", col.parent, "TOPLEFT", PAD - 6, col.y)
+	if hint then
+		local small = UI.Text(col.parent, 11, UI.C.faint)
+		small:SetText(hint)
+		small:SetPoint("LEFT", font, "RIGHT", 8, 0)
+	end
+	col.y = col.y - 24
 	col.stripe = 0
 	col.section = text
+	OpenCard(col)
 end
 
 function W.Note(col, text)
@@ -116,12 +141,30 @@ end
 local function RowFrame(col, height)
 	col.stripe = col.stripe + 1
 	local row = CreateFrame("Frame", nil, col.parent)
+	row:SetFrameLevel(col.parent:GetFrameLevel() + 3)
 	row:SetPoint("TOPLEFT", col.parent, "TOPLEFT", PAD, col.y)
 	row:SetPoint("TOPRIGHT", col.parent, "TOPRIGHT", -PAD, col.y)
 	row:SetHeight(height or ROW_H)
-	local stripe = row:CreateTexture(nil, "BACKGROUND")
-	stripe:SetAllPoints()
-	stripe:SetColorTexture(1, 1, 1, col.stripe % 2 == 1 and 0.022 or 0.008)
+	if col.card and not col.firstRow then
+		local divider = row:CreateTexture(nil, "BACKGROUND")
+		divider:SetPoint("TOPLEFT", 8, 0)
+		divider:SetPoint("TOPRIGHT", -8, 0)
+		divider:SetHeight(1)
+		divider:SetColorTexture(1, 1, 1, 0.045)
+	end
+	col.firstRow = false
+	local hover = row:CreateTexture(nil, "BACKGROUND", nil, -1)
+	hover:SetAllPoints()
+	hover:SetColorTexture(1, 1, 1, 0.025)
+	hover:Hide()
+	if row.SetMouseMotionEnabled then row:SetMouseMotionEnabled(true) end
+	row:SetScript("OnEnter", function() hover:Show() end)
+	row:SetScript("OnLeave", function(self)
+		if not self:IsMouseOver() then hover:Hide() end
+	end)
+	col.refreshers[#col.refreshers + 1] = function()
+		if not row:IsMouseOver() then hover:Hide() end
+	end
 	local flash = row:CreateTexture(nil, "BACKGROUND", nil, 1)
 	flash:SetAllPoints()
 	flash:SetAlpha(0)
@@ -150,7 +193,7 @@ end
 -- Builds one control into a host frame (a full row or one half of a row).
 local function Control(col, host, spec)
 	local label = UI.Text(host, 14, UI.C.text)
-	label:SetPoint("LEFT", 16, 0)
+	label:SetPoint("LEFT", 14, 0)
 	label:SetText(spec.label or "")
 	local control
 	local refresh
