@@ -1,0 +1,11 @@
+## Interface: 120105
+## Title: SoulUI Nameplates
+## Notes: Enemy and neutral nameplates
+## Author: SoulBound
+## Version: 0.3.0
+## Dependencies: SoulUI
+## Category: SoulUI
+## Group: SoulUI
+
+Defaults.lua
+Nameplates.lua

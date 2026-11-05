@@ -1,0 +1,28 @@
+## Interface: 120105
+## Title: SoulUI
+## Notes: SoulBound unit-frame and nameplate core
+## Author: SoulBound
+## Version: 0.3.0
+## SavedVariables: SoulUIDB
+## Category: SoulUI
+## Group: SoulUI
+## IconTexture: Interface\Icons\INV_Misc_Gem_Pearl_05
+## AddonCompartmentFunc: SoulUI_CompartmentClick
+
+Core\Gate.lua
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\LibSharedMedia-3.0\LibSharedMedia-3.0.lua
+Core\Core.lua
+Core\Database.lua
+Core\Secret.lua
+Core\Units.lua
+Core\Runtime.lua
+Core\Pixel.lua
+Core\Media.lua
+Core\Format.lua
+Core\UIKit.lua
+Core\Unlock.lua
+Core\Profiles.lua
+Core\Menu.lua
+Core\Layout.lua

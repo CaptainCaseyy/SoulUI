@@ -1,0 +1,13 @@
+# OS / editor
+Thumbs.db
+.DS_Store
+desktop.ini
+.vscode/*
+!.vscode/settings.json
+.idea/
+
+# Local-only
+*.log
+/tmp/
+/scratch/
+node_modules/

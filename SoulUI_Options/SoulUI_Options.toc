@@ -1,0 +1,14 @@
+## Interface: 120105
+## Title: SoulUI Options
+## Notes: SoulUI editor
+## Author: SoulBound
+## Version: 0.3.0
+## Dependencies: SoulUI
+## LoadOnDemand: 1
+## Category: SoulUI
+## Group: SoulUI
+
+Widgets.lua
+Pages.lua
+PagesModules.lua
+Panel.lua

@@ -1,0 +1,14 @@
+Third-party libraries embedded unmodified. SoulUI code does not reuse them as a template.
+
+LibStub
+  Public domain. Notice is in LibStub/LibStub.lua.
+  Credits: Kaelten, Cladhaire, ckknight, Mikk, Ammo, Nevcairiel, joshborke.
+
+CallbackHandler-1.0
+  Ace3 library. Notice is in CallbackHandler-1.0/CallbackHandler-1.0.lua.
+  Copyright and terms are the Ace3 license shipped with that file's header.
+
+LibSharedMedia-3.0
+  License: LGPL v2.1. Notice is in LibSharedMedia-3.0/LibSharedMedia-3.0.lua.
+  Author: Elkano. Revision MINOR 12000005.
+  Source: the lua file in this folder is the corresponding source.

@@ -1,0 +1,422 @@
+if SoulUI_Blocked or not SoulUI then return end
+
+-- Page widgets for the settings panel. A page builder gets a "column" (W.Begin)
+-- and stacks rows top-down. Every control is declarative:
+--
+--   { type = "toggle",   label, get, set }
+--   { type = "slider",   label, min, max, step, get, set }
+--   { type = "dropdown", label, items | fn, get, set, width }
+--   { type = "font" | "statusbar", label, get, set }       LibSharedMedia pickers
+--   { type = "color",    label, get -> r,g,b[,a], set(r,g,b[,a]), alpha }
+--   { type = "button",   label, text, click, style }
+--   { type = "number",   label, get, set, step }
+--   common: tooltip, disabled = fn -> bool
+--
+-- W.Row(col, spec) is a full-width row, W.Row2(col, left, right) two halves.
+-- After any set, the whole page refreshes, so dependent rows grey out at once.
+
+local Soul = SoulUI
+local UI = Soul.UI
+local W = {}
+Soul.Widgets = W
+
+local ROW_H = 44
+local PAD = 28
+
+W.searchIndex = {}
+
+function W.Begin(parent, width, pageKey, tabKey)
+	return {
+		parent = parent,
+		width = width,
+		y = -16,
+		stripe = 0,
+		refreshers = {},
+		pageKey = pageKey,
+		tabKey = tabKey,
+		section = nil,
+	}
+end
+
+function W.Finish(col)
+	col.parent:SetHeight(math.max(40, math.abs(col.y) + 24))
+end
+
+function W.Refresh(col)
+	for i = 1, #col.refreshers do
+		local ok, err = pcall(col.refreshers[i])
+		if not ok then Soul:Debug("refresh", err) end
+	end
+end
+
+local function AddRefresher(col, fn)
+	col.refreshers[#col.refreshers + 1] = fn
+end
+
+-- Every setter refreshes the page it lives on.
+local function Wrap(col, fn)
+	return function(...)
+		fn(...)
+		W.Refresh(col)
+	end
+end
+
+local function Index(col, label, row)
+	if not label or label == "" then return end
+	W.searchIndex[#W.searchIndex + 1] = {
+		label = label,
+		lower = label:lower(),
+		page = col.pageKey,
+		tab = col.tabKey,
+		section = col.section,
+		row = row,
+	}
+end
+
+function W.Section(col, text)
+	col.y = col.y - 10
+	local font = UI.Text(col.parent, 12, UI.C.faint)
+	font:SetText(string.upper(text))
+	font:SetPoint("TOPLEFT", col.parent, "TOPLEFT", PAD, col.y - 8)
+	local rule = col.parent:CreateTexture(nil, "ARTWORK")
+	rule:SetPoint("LEFT", font, "RIGHT", 10, 0)
+	rule:SetWidth(math.max(10, col.width - PAD * 2 - (font:GetStringWidth() or 60) - 10))
+	rule:SetHeight(1)
+	rule:SetColorTexture(1, 1, 1, 0.07)
+	local mark = col.parent:CreateTexture(nil, "ARTWORK")
+	mark:SetSize(3, 12)
+	mark:SetPoint("RIGHT", font, "LEFT", -7, 0)
+	UI.OnAccent(function(r, g, b) mark:SetColorTexture(r, g, b, 1) end)
+	col.y = col.y - 36
+	col.stripe = 0
+	col.section = text
+end
+
+function W.Note(col, text)
+	local font = col.parent:CreateFontString(nil, "OVERLAY")
+	Soul:ApplyFont(font, 13, "")
+	font:SetTextColor(UI.C.dim[1], UI.C.dim[2], UI.C.dim[3])
+	font:SetJustifyH("LEFT")
+	font:SetJustifyV("TOP")
+	font:SetWordWrap(true)
+	font:SetSpacing(2)
+	font:SetWidth(col.width - PAD * 2)
+	font:SetText(text)
+	font:SetPoint("TOPLEFT", col.parent, "TOPLEFT", PAD, col.y - 4)
+	local height = font:GetStringHeight()
+	if type(height) ~= "number" or height < 14 then height = 18 end
+	col.y = col.y - height - 14
+	return font
+end
+
+function W.Space(col, h)
+	col.y = col.y - (h or 12)
+end
+
+local function RowFrame(col, height)
+	col.stripe = col.stripe + 1
+	local row = CreateFrame("Frame", nil, col.parent)
+	row:SetPoint("TOPLEFT", col.parent, "TOPLEFT", PAD, col.y)
+	row:SetPoint("TOPRIGHT", col.parent, "TOPRIGHT", -PAD, col.y)
+	row:SetHeight(height or ROW_H)
+	local stripe = row:CreateTexture(nil, "BACKGROUND")
+	stripe:SetAllPoints()
+	stripe:SetColorTexture(1, 1, 1, col.stripe % 2 == 1 and 0.022 or 0.008)
+	local flash = row:CreateTexture(nil, "BACKGROUND", nil, 1)
+	flash:SetAllPoints()
+	flash:SetAlpha(0)
+	row.flash = flash
+	col.y = col.y - (height or ROW_H)
+	return row
+end
+
+-- Pulses a row (used when search jumps to it).
+function W.Flash(row)
+	if not row or not row.flash then return end
+	local r, g, b = Soul:Accent()
+	row.flash:SetColorTexture(r, g, b, 1)
+	local t = 0
+	row:SetScript("OnUpdate", function(self, dt)
+		t = t + dt
+		local a = 0.22 * math.max(0, 1 - t / 1.6) * (0.6 + 0.4 * math.sin(t * 9))
+		self.flash:SetAlpha(a)
+		if t > 1.6 then
+			self.flash:SetAlpha(0)
+			self:SetScript("OnUpdate", nil)
+		end
+	end)
+end
+
+-- Builds one control into a host frame (a full row or one half of a row).
+local function Control(col, host, spec)
+	local label = UI.Text(host, 14, UI.C.text)
+	label:SetPoint("LEFT", 16, 0)
+	label:SetText(spec.label or "")
+	local control
+	local refresh
+	local set = spec.set and Wrap(col, spec.set)
+	local kind = spec.type
+
+	if kind == "toggle" then
+		control = UI.Switch(host, spec.get, set)
+		control:SetPoint("RIGHT", -16, 0)
+		refresh = control.Refresh
+	elseif kind == "slider" then
+		local box = UI.NumberBox(host, 54, spec.get, function(v)
+			if v < spec.min then v = spec.min elseif v > spec.max then v = spec.max end
+			set(v)
+		end, spec.step)
+		box:SetPoint("RIGHT", -16, 0)
+		local slider = UI.Slider(host, spec.width or 150, spec.min, spec.max, spec.step or 1, spec.get, function(v)
+			set(v)
+			box.Refresh()
+		end)
+		slider:SetPoint("RIGHT", box, "LEFT", -12, 0)
+		control = slider
+		control.box = box
+		refresh = function()
+			slider.Refresh()
+			box.Refresh()
+		end
+		local base = slider.SetDisabled
+		function control:SetDisabled(off)
+			base(self, off)
+			box:SetEnabled(not off)
+			box:SetAlpha(off and 0.4 or 1)
+		end
+	elseif kind == "dropdown" or kind == "font" or kind == "statusbar" then
+		local items = spec.items
+		if kind == "font" then items = function() return UI.MediaItems("font") end end
+		if kind == "statusbar" then items = function() return UI.MediaItems("statusbar") end end
+		control = UI.Dropdown(host, spec.width or 190, items, spec.get, set)
+		control:SetPoint("RIGHT", -16, 0)
+		refresh = control.Refresh
+	elseif kind == "color" then
+		control = UI.Swatch(host, spec.get, set, spec.alpha)
+		control:SetPoint("RIGHT", -16, 0)
+		refresh = control.Refresh
+	elseif kind == "button" then
+		control = UI.Button(host, spec.text or spec.label, spec.width or 150, 28, function(...)
+			spec.click(...)
+			W.Refresh(col)
+		end, spec.style)
+		control:SetPoint("RIGHT", -16, 0)
+		if not spec.label then label:SetText("") end
+		refresh = function()
+			if type(spec.text) == "function" then control:SetLabel(spec.text()) end
+		end
+	elseif kind == "number" then
+		control = UI.NumberBox(host, 70, spec.get, set, spec.step)
+		control:SetPoint("RIGHT", -16, 0)
+		refresh = control.Refresh
+		function control:SetDisabled(off)
+			self:SetEnabled(not off)
+			self:SetAlpha(off and 0.4 or 1)
+		end
+	end
+
+	if control then
+		label:SetPoint("RIGHT", control, "LEFT", -12, 0)
+	end
+	if spec.tooltip then
+		local hit = CreateFrame("Frame", nil, host)
+		hit:SetAllPoints(label)
+		hit:EnableMouse(true)
+		UI.Tip(hit, spec.label, spec.tooltip)
+	end
+	AddRefresher(col, function()
+		local off = spec.disabled and spec.disabled() and true or false
+		if control and control.SetDisabled then control:SetDisabled(off) end
+		label:SetAlpha(off and 0.4 or 1)
+		if refresh then refresh() end
+	end)
+	return control
+end
+
+function W.Row(col, spec)
+	local row = RowFrame(col, spec.height)
+	Control(col, row, spec)
+	Index(col, spec.label, row)
+	return row
+end
+
+function W.Row2(col, left, right)
+	local row = RowFrame(col)
+	local half = (col.width - PAD * 2) / 2
+	local a = CreateFrame("Frame", nil, row)
+	a:SetPoint("TOPLEFT")
+	a:SetPoint("BOTTOMLEFT")
+	a:SetWidth(half)
+	Control(col, a, left)
+	Index(col, left.label, row)
+	if right then
+		local divider = row:CreateTexture(nil, "ARTWORK")
+		divider:SetPoint("TOP", row, "TOP", 0, -8)
+		divider:SetPoint("BOTTOM", row, "BOTTOM", 0, 8)
+		divider:SetWidth(1)
+		divider:SetColorTexture(1, 1, 1, 0.06)
+		local b = CreateFrame("Frame", nil, row)
+		b:SetPoint("TOPRIGHT")
+		b:SetPoint("BOTTOMRIGHT")
+		b:SetWidth(half)
+		Control(col, b, right)
+		Index(col, right.label, row)
+	end
+	return row
+end
+
+-- Rows of plain buttons, left aligned.
+function W.Buttons(col, list)
+	local row = RowFrame(col)
+	local x = 16
+	for i = 1, #list do
+		local info = list[i]
+		local button = UI.Button(row, info.text, info.width or 150, 28, function(...)
+			info.click(...)
+			W.Refresh(col)
+		end, info.style)
+		button:SetPoint("LEFT", x, 0)
+		x = x + (info.width or 150) + 8
+		if info.tooltip then UI.Tip(button, info.text, info.tooltip) end
+		if info.disabled then
+			AddRefresher(col, function() button:SetDisabled(info.disabled()) end)
+		end
+		Index(col, info.text, row)
+	end
+	return row
+end
+
+-- Segmented selector ("Player | Target | Focus ..."). Changing it refreshes
+-- every row, whose getters read the selected key at call time.
+function W.Selector(col, options, get, set)
+	local row = RowFrame(col, 40)
+	local buttons = {}
+	local x = 16
+	local function Paint()
+		local r, g, b = Soul:Accent()
+		local current = get()
+		for i = 1, #buttons do
+			local button = buttons[i]
+			local on = button.value == current
+			button.face:SetColorTexture(on and r or 1, on and g or 1, on and b or 1, on and 0.9 or 0.04)
+			if on then
+				button.text:SetTextColor(0.02, 0.02, 0.03)
+			else
+				button.text:SetTextColor(UI.C.dim[1], UI.C.dim[2], UI.C.dim[3])
+			end
+		end
+	end
+	for i = 1, #options do
+		local option = options[i]
+		local button = CreateFrame("Button", nil, row)
+		local text = UI.Text(button, 13, UI.C.dim, "CENTER")
+		text:SetPoint("CENTER")
+		text:SetText(option.label)
+		local width = math.max(70, (text:GetStringWidth() or 60) + 28)
+		button:SetSize(width, 28)
+		button:SetPoint("LEFT", x, 0)
+		x = x + width + 4
+		button.face = UI.Fill(button, { 1, 1, 1, 0.04 })
+		button.text = text
+		button.value = option.value
+		button:SetScript("OnClick", function()
+			set(option.value)
+			W.Refresh(col)
+		end)
+		buttons[#buttons + 1] = button
+	end
+	AddRefresher(col, Paint)
+	UI.OnAccent(Paint)
+	return row
+end
+
+-- Multi-line text box (profile export/import).
+function W.TextArea(col, height, readOnlyText)
+	local row = RowFrame(col, height + 16)
+	local holder = CreateFrame("Frame", nil, row)
+	holder:SetPoint("TOPLEFT", 16, -8)
+	holder:SetPoint("BOTTOMRIGHT", -16, 8)
+	UI.Fill(holder, { 0, 0, 0, 0.4 })
+	UI.Edge(holder, 1, 1, 1, 0.12)
+	local scroll = CreateFrame("ScrollFrame", nil, holder)
+	scroll:SetPoint("TOPLEFT", 8, -8)
+	scroll:SetPoint("BOTTOMRIGHT", -8, 8)
+	local box = CreateFrame("EditBox", nil, scroll)
+	box:SetMultiLine(true)
+	box:SetAutoFocus(false)
+	box:SetMaxLetters(0)
+	Soul:ApplyFont(box, 12, "")
+	box:SetTextColor(UI.C.text[1], UI.C.text[2], UI.C.text[3])
+	box:SetWidth(col.width - PAD * 2 - 48)
+	box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+	scroll:SetScrollChild(box)
+	scroll:EnableMouseWheel(true)
+	scroll:SetScript("OnMouseWheel", function(self, delta)
+		local maxScroll = math.max(0, box:GetHeight() - self:GetHeight())
+		self:SetVerticalScroll(math.min(maxScroll, math.max(0, self:GetVerticalScroll() - delta * 30)))
+	end)
+	holder:EnableMouse(true)
+	holder:SetScript("OnMouseDown", function() box:SetFocus() end)
+	if readOnlyText then box:SetText(readOnlyText) end
+	row.box = box
+	return row
+end
+
+-- Plain text input row with a button.
+function W.Input(col, label, buttonText, onSubmit, width)
+	local row = RowFrame(col)
+	local text = UI.Text(row, 14, UI.C.text)
+	text:SetPoint("LEFT", 16, 0)
+	text:SetText(label)
+	local button = UI.Button(row, buttonText, 120, 28, function() end, "plain")
+	button:SetPoint("RIGHT", -16, 0)
+	local box = CreateFrame("EditBox", nil, row)
+	box:SetSize(width or 240, 26)
+	box:SetPoint("RIGHT", button, "LEFT", -8, 0)
+	box:SetAutoFocus(false)
+	box:SetMaxLetters(40)
+	box:SetTextInsets(8, 8, 0, 0)
+	Soul:ApplyFont(box, 13, "")
+	box:SetTextColor(UI.C.text[1], UI.C.text[2], UI.C.text[3])
+	UI.Fill(box, { 0, 0, 0, 0.35 })
+	UI.Edge(box, 1, 1, 1, 0.14)
+	local function Submit()
+		onSubmit(box:GetText() or "", box)
+		W.Refresh(col)
+	end
+	box:SetScript("OnEnterPressed", function(self) Submit() self:ClearFocus() end)
+	box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+	button:SetScript("OnClick", Submit)
+	row.box = box
+	Index(col, label, row)
+	return row
+end
+
+-- A list of rows built from a function at refresh time (profiles list).
+function W.List(col, count, paint)
+	local rows = {}
+	for i = 1, count do
+		local row = RowFrame(col, 40)
+		row.index = i
+		rows[i] = row
+	end
+	AddRefresher(col, function() paint(rows) end)
+	return rows
+end
+
+-- Color helpers for settings stored as { r, g, b } arrays.
+function W.ColorGet(tableFn, key, dr, dg, db)
+	return function()
+		local c = tableFn()[key]
+		if type(c) == "table" then return c[1] or c.r, c[2] or c.g, c[3] or c.b, c[4] or c.a end
+		return dr or 1, dg or 1, db or 1
+	end
+end
+
+function W.ColorSet(tableFn, key, after)
+	return function(r, g, b, a)
+		if r == nil then return end
+		tableFn()[key] = { r, g, b, a }
+		if after then after() end
+	end
+end

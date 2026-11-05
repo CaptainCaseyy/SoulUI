@@ -1,0 +1,11 @@
+## Interface: 120105
+## Title: SoulUI Damage Meters
+## Notes: Damage and healing meters from C_DamageMeter
+## Author: SoulBound
+## Version: 0.3.0
+## Dependencies: SoulUI
+## Category: SoulUI
+## Group: SoulUI
+
+Defaults.lua
+DamageMeters.lua

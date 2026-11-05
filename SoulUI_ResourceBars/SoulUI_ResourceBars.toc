@@ -1,0 +1,11 @@
+## Interface: 120105
+## Title: SoulUI Resource Bars
+## Notes: Primary power, class pips, cast bar, and GCD
+## Author: SoulBound
+## Version: 0.3.0
+## Dependencies: SoulUI
+## Category: SoulUI
+## Group: SoulUI
+
+Defaults.lua
+ResourceBars.lua

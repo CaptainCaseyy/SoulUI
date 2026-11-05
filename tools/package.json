@@ -1,0 +1,8 @@
+{
+  "name": "soului-tools",
+  "private": true,
+  "description": "Dev tooling for SoulUI (Lua syntax lint). Run: npm install --prefix tools && node tools/lint.mjs",
+  "dependencies": {
+    "luaparse": "0.3.1"
+  }
+}
