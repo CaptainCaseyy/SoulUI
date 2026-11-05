@@ -79,12 +79,24 @@ local function BuildLook(col)
 	})
 	W.Section(col, "Settings window")
 	W.Row(col, {
-		type = "slider", label = "Window scale", min = 0.6, max = 1.6, step = 0.05,
-		get = function() return Soul.db.account.panelScale or 1 end,
+		type = "dropdown", label = "Window font", width = 220,
+		tooltip = "Font for this window and edit mode. Frames keep the font above. Window scale is the slider at the top right of this window.",
+		items = function()
+			local items = { { value = "", label = "SoulUI default (Arial Narrow)" } }
+			local media = UI.MediaItems("font")
+			for i = 1, #media do items[#items + 1] = media[i] end
+			return items
+		end,
+		get = function() return Soul.db.account.uiFont or "" end,
 		set = function(v)
-			Soul.db.account.panelScale = v
-			local frame = _G.SoulUI_OptionsFrame
-			if frame then frame:SetScale(UI.PanelScale()) end
+			Soul.db.account.uiFont = (v ~= "" and v) or nil
+			UI.RefreshFonts()
+			-- Pages measured text with the old font; rebuild them next frame
+			-- (not inside this page's own refresh).
+			C_Timer.After(0, function()
+				Soul.Options.Invalidate()
+				Soul.Options.Refresh()
+			end)
 		end,
 	})
 end
@@ -312,8 +324,8 @@ local function BuildProfiles(col)
 			local row = rows[i]
 			local name = names[i]
 			if not row.text then
-				row.text = UI.Text(row, 14, UI.C.text)
-				row.text:SetPoint("LEFT", 16, 0)
+				row.text = UI.Text(row, 15, UI.C.text)
+				row.text:SetPoint("LEFT", 20, 0)
 				row.tag = UI.Text(row, 12, UI.C.dim)
 				row.tag:SetPoint("LEFT", row.text, "RIGHT", 10, 0)
 				row.delete = UI.Button(row, "Delete", 80, 26, function()

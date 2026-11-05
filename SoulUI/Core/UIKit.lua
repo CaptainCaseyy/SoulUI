@@ -2,8 +2,11 @@ if SoulUI_Blocked then return end
 
 -- Shared look for SoulUI's own chrome: the settings panel (SoulUI_Options) and
 -- edit mode (Unlock.lua) are both built from these pieces so they match.
--- Style: near-black surfaces, every gray is white-plus-alpha, one accent color
--- (theme accent), 1 physical pixel borders, panels at 1 unit = 1 pixel.
+-- Style (0.6.0): cool near-black surfaces, every gray is white-plus-alpha, one
+-- accent color (theme accent), 1 physical pixel hairlines, square controls,
+-- icons drawn with Line objects (no letters standing in for icons), and one
+-- condensed UI font (account.uiFont, default Arial Narrow) separate from the
+-- font used on unit frames. Panels run at 1 unit = 1 pixel.
 
 local Soul = SoulUI
 local UI = {}
@@ -12,15 +15,86 @@ Soul.UI = UI
 local WHITE = "Interface\\Buttons\\WHITE8X8"
 
 UI.C = {
-	panel = { 0.055, 0.055, 0.065, 0.97 },
-	band = { 0.075, 0.075, 0.088, 1 },
-	sidebar = { 0.045, 0.045, 0.053, 1 },
-	control = { 0.11, 0.11, 0.13, 1 },
-	controlHover = { 0.15, 0.15, 0.175, 1 },
-	text = { 0.93, 0.93, 0.95 },
-	dim = { 0.58, 0.58, 0.63 },
-	faint = { 0.38, 0.38, 0.42 },
+	panel = { 0.047, 0.055, 0.063, 0.97 },
+	band = { 0.062, 0.071, 0.080, 1 },
+	sidebar = { 0.033, 0.039, 0.045, 1 },
+	control = { 0.0, 0.0, 0.0, 0.32 },
+	controlHover = { 1, 1, 1, 0.06 },
+	text = { 0.92, 0.93, 0.94 },
+	dim = { 0.62, 0.64, 0.67 },
+	faint = { 0.42, 0.44, 0.47 },
+	line = { 1, 1, 1, 0.07 },
 }
+
+------------------------------------------------------------------------------
+-- UI font (settings window and edit mode). Unit frames keep the theme font.
+------------------------------------------------------------------------------
+
+UI.DEFAULT_FONT = "Fonts\\ARIALN.TTF"
+local fontRegistry = setmetatable({}, { __mode = "k" })
+
+function UI.FontPath()
+	local name = Soul.db and Soul.db.account and Soul.db.account.uiFont
+	if type(name) == "string" and name ~= "" then
+		local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+		local path = LSM and LSM:Fetch("font", name, true)
+		if path then return path end
+	end
+	return UI.DEFAULT_FONT
+end
+
+-- Sets the UI font on a FontString or EditBox and remembers it so a font
+-- change re-fonts every open SoulUI window.
+function UI.SetFont(object, size)
+	size = size or 13
+	fontRegistry[object] = size
+	object:SetFont(UI.FontPath(), size, "")
+	-- A missing font file leaves the object without a font: fall back.
+	if not object:GetFont() then
+		object:SetFont(UI.DEFAULT_FONT, size, "")
+	end
+end
+
+function UI.RefreshFonts()
+	for object, size in pairs(fontRegistry) do
+		pcall(UI.SetFont, object, size)
+	end
+end
+
+------------------------------------------------------------------------------
+-- Drawn icons. Each glyph is a few Line objects inside a square frame.
+--   close, chevron-down, chevron-right, check, plus
+------------------------------------------------------------------------------
+
+local GLYPHS = {
+	close = { { -0.32, 0.32, 0.32, -0.32 }, { -0.32, -0.32, 0.32, 0.32 } },
+	["chevron-down"] = { { -0.32, 0.14, 0.02, -0.2 }, { -0.02, -0.2, 0.32, 0.14 } },
+	["chevron-right"] = { { -0.14, 0.32, 0.2, -0.02 }, { 0.2, 0.02, -0.14, -0.32 } },
+	check = { { -0.34, 0.0, -0.08, -0.26 }, { -0.1, -0.26, 0.36, 0.24 } },
+	plus = { { -0.34, 0, 0.34, 0 }, { 0, -0.34, 0, 0.34 } },
+}
+
+function UI.Glyph(parent, kind, size, color, thickness)
+	local frame = CreateFrame("Frame", nil, parent)
+	frame:SetSize(size, size)
+	frame:EnableMouse(false)
+	local lines = {}
+	local spec = GLYPHS[kind] or GLYPHS.close
+	color = color or UI.C.dim
+	for i = 1, #spec do
+		local seg = spec[i]
+		local line = frame:CreateLine(nil, "OVERLAY")
+		line:SetThickness(thickness or 1.5)
+		line:SetStartPoint("CENTER", frame, seg[1] * size, seg[2] * size)
+		line:SetEndPoint("CENTER", frame, seg[3] * size, seg[4] * size)
+		line:SetColorTexture(color[1], color[2], color[3], color[4] or 1)
+		lines[i] = line
+	end
+	function frame:SetColor(r, g, b, a)
+		for i = 1, #lines do lines[i]:SetColorTexture(r, g, b, a or 1) end
+	end
+	return frame
+end
 
 local accentRegs = {}
 
@@ -87,9 +161,9 @@ end
 
 function UI.Text(parent, size, color, justify, layer)
 	local text = parent:CreateFontString(nil, layer or "OVERLAY")
-	Soul:ApplyFont(text, size or 13, "")
+	UI.SetFont(text, size or 13)
 	text:SetShadowOffset(1, -1)
-	text:SetShadowColor(0, 0, 0, 0.9)
+	text:SetShadowColor(0, 0, 0, 0.75)
 	color = color or UI.C.text
 	text:SetTextColor(color[1], color[2], color[3], color[4] or 1)
 	text:SetJustifyH(justify or "LEFT")
@@ -163,14 +237,8 @@ function UI.Window(name, title, width, height, opts)
 	end)
 
 	if not opts.noClose then
-		local close = CreateFrame("Button", nil, bar)
-		close:SetSize(28, 28)
-		close:SetPoint("RIGHT", -6, 0)
-		local glyph = UI.Text(close, 16, UI.C.dim, "CENTER")
-		glyph:SetPoint("CENTER", 0, 1)
-		glyph:SetText("x")
-		close:SetScript("OnEnter", function() glyph:SetTextColor(1, 0.35, 0.35) end)
-		close:SetScript("OnLeave", function() glyph:SetTextColor(UI.C.dim[1], UI.C.dim[2], UI.C.dim[3]) end)
+		local close = UI.IconButton(bar, "close", 26)
+		close:SetPoint("RIGHT", -8, 0)
 		close:SetScript("OnClick", function()
 			if opts.onClose then opts.onClose() else frame:Hide() end
 		end)
@@ -191,14 +259,38 @@ function UI.Window(name, title, width, height, opts)
 	return frame
 end
 
--- Buttons: style "accent" (filled accent), "plain" (bordered), "ghost" (text only).
+-- Square icon button (close and similar): hairline box, drawn glyph.
+function UI.IconButton(parent, kind, size, onClick)
+	local button = CreateFrame("Button", nil, parent)
+	button:SetSize(size or 28, size or 28)
+	local face = UI.Fill(button, { 1, 1, 1, 0 })
+	local outline = UI.Edge(button, 1, 1, 1, 0.14)
+	local glyph = UI.Glyph(button, kind, math.floor((size or 28) * 0.5), UI.C.dim, 1.5)
+	glyph:SetPoint("CENTER")
+	button:SetScript("OnEnter", function()
+		face:SetColorTexture(1, 1, 1, 0.06)
+		outline:SetColor(1, 1, 1, 0.3)
+		glyph:SetColor(1, 1, 1, 1)
+	end)
+	button:SetScript("OnLeave", function()
+		face:SetColorTexture(1, 1, 1, 0)
+		outline:SetColor(1, 1, 1, 0.14)
+		glyph:SetColor(UI.C.dim[1], UI.C.dim[2], UI.C.dim[3], 1)
+	end)
+	if onClick then button:SetScript("OnClick", onClick) end
+	button.glyph = glyph
+	return button
+end
+
+-- Buttons: style "accent" (filled accent), "plain" (hairline), "ghost" (text
+-- only), "outline" (accent hairline), "danger".
 function UI.Button(parent, label, width, height, onClick, style)
 	style = style or "plain"
 	local button = CreateFrame("Button", nil, parent)
 	button:SetSize(width or 120, height or 28)
 	local face = UI.Fill(button, UI.C.control)
-	local outline = UI.Edge(button, 1, 1, 1, 0.12)
-	local text = UI.Text(button, 13, UI.C.text, "CENTER")
+	local outline = UI.Edge(button, 1, 1, 1, 0.14)
+	local text = UI.Text(button, 14, UI.C.text, "CENTER")
 	text:SetPoint("LEFT", 6, 0)
 	text:SetPoint("RIGHT", -6, 0)
 	text:SetText(label or "")
@@ -208,8 +300,8 @@ function UI.Button(parent, label, width, height, onClick, style)
 	local function Paint()
 		local r, g, b = Soul:Accent()
 		if button._disabled then
-			face:SetColorTexture(UI.C.control[1], UI.C.control[2], UI.C.control[3], 0.5)
-			outline:SetColor(1, 1, 1, 0.05)
+			face:SetColorTexture(1, 1, 1, 0)
+			outline:SetColor(1, 1, 1, 0.06)
 			text:SetTextColor(UI.C.faint[1], UI.C.faint[2], UI.C.faint[3])
 		elseif style == "accent" then
 			face:SetColorTexture(r, g, b, hovered and 1 or 0.85)
@@ -220,17 +312,16 @@ function UI.Button(parent, label, width, height, onClick, style)
 			outline:SetColor(1, 1, 1, 0)
 			text:SetTextColor(hovered and 1 or UI.C.dim[1], hovered and 1 or UI.C.dim[2], hovered and 1 or UI.C.dim[3])
 		elseif style == "outline" then
-			face:SetColorTexture(r, g, b, hovered and 0.18 or 0.06)
-			outline:SetColor(r, g, b, hovered and 1 or 0.75)
+			face:SetColorTexture(r, g, b, hovered and 0.16 or 0.04)
+			outline:SetColor(r, g, b, hovered and 1 or 0.7)
 			text:SetTextColor(hovered and 1 or r, hovered and 1 or g, hovered and 1 or b)
 		elseif style == "danger" then
 			face:SetColorTexture(hovered and 0.45 or 0.3, 0.08, 0.08, 1)
 			outline:SetColor(1, 0.3, 0.3, 0.35)
 			text:SetTextColor(1, 0.85, 0.85)
 		else
-			local c = hovered and UI.C.controlHover or UI.C.control
-			face:SetColorTexture(c[1], c[2], c[3], 1)
-			outline:SetColor(1, 1, 1, hovered and 0.24 or 0.12)
+			face:SetColorTexture(1, 1, 1, hovered and 0.06 or 0.015)
+			outline:SetColor(1, 1, 1, hovered and 0.3 or 0.14)
 			text:SetTextColor(UI.C.text[1], UI.C.text[2], UI.C.text[3])
 		end
 	end
@@ -247,12 +338,13 @@ function UI.Button(parent, label, width, height, onClick, style)
 	return button
 end
 
--- Pill switch. get() -> bool, set(bool).
+-- Switch: square track with a hairline, square knob. get() -> bool, set(bool).
 function UI.Switch(parent, get, set)
 	local button = CreateFrame("Button", nil, parent)
-	button:SetSize(40, 20)
+	button:SetSize(38, 20)
 	local track = button:CreateTexture(nil, "BACKGROUND")
 	track:SetAllPoints()
+	local edge = UI.Edge(button, 1, 1, 1, 0.16)
 	local knob = button:CreateTexture(nil, "ARTWORK")
 	knob:SetSize(14, 14)
 	local pos = 0
@@ -261,7 +353,7 @@ function UI.Switch(parent, get, set)
 		if not animate then
 			pos = target
 			knob:ClearAllPoints()
-			knob:SetPoint("LEFT", 3 + pos * 20, 0)
+			knob:SetPoint("LEFT", 3 + pos * 18, 0)
 			return
 		end
 		local from, t = pos, 0
@@ -271,21 +363,24 @@ function UI.Switch(parent, get, set)
 			local eased = 1 - (1 - t) * (1 - t)
 			pos = from + (target - from) * eased
 			knob:ClearAllPoints()
-			knob:SetPoint("LEFT", 3 + pos * 20, 0)
+			knob:SetPoint("LEFT", 3 + pos * 18, 0)
 		end)
 	end
 	local function Paint(animate)
 		local on = get() and true or false
 		local r, g, b = Soul:Accent()
 		if button._disabled then
-			track:SetColorTexture(0.2, 0.2, 0.22, 0.4)
-			knob:SetColorTexture(1, 1, 1, 0.25)
+			track:SetColorTexture(1, 1, 1, 0.03)
+			edge:SetColor(1, 1, 1, 0.07)
+			knob:SetColorTexture(1, 1, 1, 0.18)
 		elseif on then
-			track:SetColorTexture(r, g, b, 0.9)
+			track:SetColorTexture(r, g, b, 0.85)
+			edge:SetColor(r, g, b, 1)
 			knob:SetColorTexture(1, 1, 1, 1)
 		else
-			track:SetColorTexture(0.27, 0.27, 0.3, 0.75)
-			knob:SetColorTexture(1, 1, 1, 0.55)
+			track:SetColorTexture(0, 0, 0, 0.35)
+			edge:SetColor(1, 1, 1, 0.16)
+			knob:SetColorTexture(0.62, 0.64, 0.67, 1)
 		end
 		Place(on and 1 or 0, animate)
 	end
@@ -304,10 +399,10 @@ end
 -- Numeric box: commits on Enter or focus loss, mouse wheel steps it.
 function UI.NumberBox(parent, width, get, set, step)
 	local box = CreateFrame("EditBox", nil, parent)
-	box:SetSize(width or 56, 24)
+	box:SetSize(width or 56, 26)
 	box:SetAutoFocus(false)
 	box:SetJustifyH("CENTER")
-	Soul:ApplyFont(box, 13, "")
+	UI.SetFont(box, 14)
 	box:SetTextColor(UI.C.text[1], UI.C.text[2], UI.C.text[3])
 	UI.Fill(box, { 0, 0, 0, 0.35 })
 	local outline = UI.Edge(box, 1, 1, 1, 0.12)
@@ -372,8 +467,8 @@ local function EnsureMenu()
 	menu:EnableMouse(true)
 	menu:EnableMouseWheel(true)
 	menu:Hide()
-	UI.Fill(menu, { 0.07, 0.07, 0.085, 0.99 })
-	UI.Edge(menu, 1, 1, 1, 0.16)
+	UI.Fill(menu, { 0.055, 0.063, 0.071, 0.99 })
+	UI.Edge(menu, 1, 1, 1, 0.14)
 	menu.rows = {}
 	menu.offset = 0
 	menu:SetScript("OnHide", function() catcher:Hide() end)
@@ -399,7 +494,7 @@ local function EnsureMenu()
 				if item.font then
 					pcall(row.text.SetFont, row.text, item.font, 13, "")
 				else
-					Soul:ApplyFont(row.text, 13, "")
+					UI.SetFont(row.text, 14)
 				end
 				if item.texture then
 					row.swatch:SetTexture(item.texture)
@@ -506,15 +601,14 @@ end
 -- Dropdown button. items may be a table or a function returning one.
 function UI.Dropdown(parent, width, items, get, set)
 	local button = CreateFrame("Button", nil, parent)
-	button:SetSize(width or 200, 26)
+	button:SetSize(width or 200, 28)
 	local face = UI.Fill(button, UI.C.control)
-	local outline = UI.Edge(button, 1, 1, 1, 0.14)
-	local text = UI.Text(button, 13, UI.C.text)
+	local outline = UI.Edge(button, 1, 1, 1, 0.12)
+	local text = UI.Text(button, 14, UI.C.text)
 	text:SetPoint("LEFT", 10, 0)
-	text:SetPoint("RIGHT", -24, 0)
-	local arrow = UI.Text(button, 12, UI.C.dim, "CENTER")
-	arrow:SetPoint("RIGHT", -8, 0)
-	arrow:SetText("v")
+	text:SetPoint("RIGHT", -26, 0)
+	local arrow = UI.Glyph(button, "chevron-down", 12, UI.C.dim, 1.5)
+	arrow:SetPoint("RIGHT", -9, 0)
 	local function List()
 		if type(items) == "function" then return items() end
 		return items
@@ -533,18 +627,20 @@ function UI.Dropdown(parent, width, items, get, set)
 		text:SetText(label)
 		if button._disabled then
 			text:SetTextColor(UI.C.faint[1], UI.C.faint[2], UI.C.faint[3])
+			arrow:SetColor(1, 1, 1, 0.2)
 		else
 			text:SetTextColor(UI.C.text[1], UI.C.text[2], UI.C.text[3])
+			arrow:SetColor(UI.C.dim[1], UI.C.dim[2], UI.C.dim[3], 1)
 		end
 	end
 	button:SetScript("OnEnter", function()
 		if button._disabled then return end
-		face:SetColorTexture(UI.C.controlHover[1], UI.C.controlHover[2], UI.C.controlHover[3], 1)
-		outline:SetColor(1, 1, 1, 0.26)
+		face:SetColorTexture(1, 1, 1, 0.05)
+		outline:SetColor(1, 1, 1, 0.28)
 	end)
 	button:SetScript("OnLeave", function()
-		face:SetColorTexture(UI.C.control[1], UI.C.control[2], UI.C.control[3], 1)
-		outline:SetColor(1, 1, 1, 0.14)
+		face:SetColorTexture(UI.C.control[1], UI.C.control[2], UI.C.control[3], UI.C.control[4])
+		outline:SetColor(1, 1, 1, 0.12)
 	end)
 	button:SetScript("OnClick", function(self)
 		if self._disabled then return end
@@ -572,13 +668,13 @@ function UI.Slider(parent, width, minValue, maxValue, step, get, set)
 	local track = slider:CreateTexture(nil, "BACKGROUND")
 	track:SetPoint("LEFT")
 	track:SetPoint("RIGHT")
-	track:SetHeight(4)
-	track:SetColorTexture(1, 1, 1, 0.12)
+	track:SetHeight(3)
+	track:SetColorTexture(1, 1, 1, 0.1)
 	local fill = slider:CreateTexture(nil, "BORDER")
 	fill:SetPoint("LEFT", track, "LEFT")
-	fill:SetHeight(4)
+	fill:SetHeight(3)
 	local thumb = slider:CreateTexture(nil, "ARTWORK")
-	thumb:SetSize(12, 12)
+	thumb:SetSize(10, 14)
 	thumb:SetColorTexture(1, 1, 1, 1)
 	slider:SetThumbTexture(thumb)
 	local silent = false
@@ -592,8 +688,8 @@ function UI.Slider(parent, width, minValue, maxValue, step, get, set)
 			fill:SetColorTexture(1, 1, 1, 0.15)
 			thumb:SetColorTexture(1, 1, 1, 0.3)
 		else
-			fill:SetColorTexture(r, g, b, 0.85)
-			thumb:SetColorTexture(1, 1, 1, 1)
+			fill:SetColorTexture(r, g, b, 1)
+			thumb:SetColorTexture(r, g, b, 1)
 		end
 	end
 	local function Refresh()
@@ -631,18 +727,18 @@ end
 -- Color swatch. get() -> r, g, b[, a]; set(r, g, b[, a]).
 function UI.Swatch(parent, get, set, hasAlpha)
 	local button = CreateFrame("Button", nil, parent)
-	button:SetSize(26, 26)
+	button:SetSize(30, 22)
 	UI.Fill(button, { 0, 0, 0, 1 })
 	local chip = button:CreateTexture(nil, "ARTWORK")
 	chip:SetPoint("TOPLEFT", 2, -2)
 	chip:SetPoint("BOTTOMRIGHT", -2, 2)
-	local outline = UI.Edge(button, 1, 1, 1, 0.25)
+	local outline = UI.Edge(button, 1, 1, 1, 0.2)
 	local function Refresh()
 		local r, g, b, a = get()
 		chip:SetColorTexture(r or 1, g or 1, b or 1, button._disabled and 0.25 or (a or 1))
 	end
 	button:SetScript("OnEnter", function() outline:SetColor(1, 1, 1, 0.6) end)
-	button:SetScript("OnLeave", function() outline:SetColor(1, 1, 1, 0.25) end)
+	button:SetScript("OnLeave", function() outline:SetColor(1, 1, 1, 0.2) end)
 	button:SetScript("OnClick", function(self)
 		if self._disabled then return end
 		local r, g, b, a = get()

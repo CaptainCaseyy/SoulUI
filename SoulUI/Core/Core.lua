@@ -3,7 +3,7 @@ if SoulUI_Blocked then return end
 SoulUI = SoulUI or {}
 local Soul = SoulUI
 
-Soul.version = "0.5.0"
+Soul.version = "0.6.0"
 Soul.modules = {}
 Soul.optionPages = {}
 Soul._callbacks = {}
@@ -232,6 +232,7 @@ local function Slash(msg)
 		local value = tonumber(rest)
 		if value and value >= 0.5 and value <= 2 then
 			Soul.db.account.panelScale = value
+			if Soul.Options and Soul.Options.SetScale then Soul.Options.SetScale() end
 			Soul:Print("Editor scale", value)
 		else
 			Soul:Print("Usage: /soul scale 0.5-2")

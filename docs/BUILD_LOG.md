@@ -2,6 +2,54 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-05 — laptop — 0.6.0 settings window redesign
+
+The owner sent a screenshot of EllesmereUI's Global Settings window and asked for a full redesign of `/soul` to that level of cleanliness. The design comes from studying the screenshot; no Ellesmere code or assets were used.
+
+**What the reference does that ours did not.** Fewer, calmer surfaces. One condensed font. Hairlines instead of boxed cards. A big page title. Text tabs with an underline. Accent used only for headings, the active item and on-states. Square controls. Generous row height.
+
+**Window (`SoulUI_Options/Panel.lua`, rewritten).**
+- **Size:** 1180x780.
+- **Sidebar:**
+  - Diamond logo and name.
+  - Fading accent rule.
+  - Pinned Edit Mode row.
+  - General and Profiles pages.
+  - Search box.
+  - Accent group headings with page rows.
+  - Profile and version at the bottom.
+  - The nav scrolls if it ever outgrows the window.
+- **Header:** large title, description, and a window-scale slider (moved here from General > Look, applied on mouse release) next to a drawn close button.
+- **Below the header:** tabs with an underline and page search, the preview strip, scrolling content with a thin scroll track, and a footer.
+
+**Rows (`Widgets.lua`).** Sections are an uppercase heading over one flat panel, with no borders and no row separators. Rows are 46 tall, two-column rows split on one hairline, labels are 15px, and the selector is outlined segments.
+
+**Controls (`Core/UIKit.lua`).**
+- New palette.
+- Square switch with a hairline.
+- Thinner slider with an accent knob.
+- Dropdown with a drawn chevron.
+- Hairline buttons.
+- New `UI.Glyph` and `UI.IconButton`, drawn from Line objects.
+- New UI font system: `UI.SetFont`, `UI.RefreshFonts`, and `account.uiFont`, defaulting to Arial Narrow, which ships with the client. Choose it under General > Look > Window font.
+- Edit mode picks up the same look.
+
+**Versions.** SoulUI and SoulUI_Options are 0.6.0.
+
+**Untested in game.**
+- The Line-based glyphs and the diamond logo. If CreateLine misbehaves they would be missing, not erroring.
+- Arial Narrow sizes.
+- The header scale slider.
+
+**Review pass.** A review agent found three defects, all fixed:
+- **Window outline:** the sidebar covered the outline. It now sits on its own frame above the sidebar.
+- **Brand glow:** the gradient was upside down.
+- **Window font change:** pages kept measurements from the old font. They are now rebuilt after a change.
+
+Also: `/soul scale` now applies the scale to an open window, and profile list rows use the new inset.
+
+**Possible follow-up.** Bundle an open-license condensed font (for example Inter or Roboto Condensed, both OFL or Apache) in SoulUI/Media for a closer match to Ellesmere's typography. This needs a font file added to the repo.
+
 ## 2026-11-05 — laptop — 0.5.0 one player cast bar, hide any element, Cooldown Manager
 
 The owner tested 0.4.0 (edit-mode screenshot). Problems:
