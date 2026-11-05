@@ -8,6 +8,10 @@ if LSM then
 	if STANDARD_TEXT_FONT then
 		LSM:Register("font", "SoulUI Default", STANDARD_TEXT_FONT)
 	end
+	-- Bundled UI font: Barlow Semi Condensed (SIL Open Font License 1.1,
+	-- Media/Fonts/OFL-Barlow.txt). Also usable on frames through the font lists.
+	LSM:Register("font", "SoulUI Barlow", "Interface\\AddOns\\SoulUI\\Media\\Fonts\\BarlowSemiCondensed-Medium.ttf")
+	LSM:Register("font", "SoulUI Barlow SemiBold", "Interface\\AddOns\\SoulUI\\Media\\Fonts\\BarlowSemiCondensed-SemiBold.ttf")
 end
 
 function Soul:Media(kind, name)

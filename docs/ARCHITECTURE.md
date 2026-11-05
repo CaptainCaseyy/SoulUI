@@ -77,7 +77,7 @@ SoulUIDB = {
   account = { debug = false, panelScale = 1, welcomed = true,
               windows = { [frameName] = { point, relPoint, x, y } },   -- movable SoulUI windows
               edit = { grid, snap, gridSize, shade, ghosts },           -- edit mode toolbar
-              uiFont = nil },   -- LSM font name for the settings window / edit mode (nil = Arial Narrow)
+              uiFont = nil },   -- LSM font name for the settings window / edit mode (nil = bundled Barlow Semi Condensed)
   _migrations = { },
   profiles = {
     Default = {

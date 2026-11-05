@@ -5,7 +5,7 @@ if SoulUI_Blocked then return end
 -- Style (0.6.0): cool near-black surfaces, every gray is white-plus-alpha, one
 -- accent color (theme accent), 1 physical pixel hairlines, square controls,
 -- icons drawn with Line objects (no letters standing in for icons), and one
--- condensed UI font (account.uiFont, default Arial Narrow) separate from the
+-- condensed UI font (account.uiFont, default bundled Barlow) separate from the
 -- font used on unit frames. Panels run at 1 unit = 1 pixel.
 
 local Soul = SoulUI
@@ -30,16 +30,24 @@ UI.C = {
 -- UI font (settings window and edit mode). Unit frames keep the theme font.
 ------------------------------------------------------------------------------
 
-UI.DEFAULT_FONT = "Fonts\\ARIALN.TTF"
+-- Default: the bundled Barlow Semi Condensed (SIL OFL 1.1, SoulUI/Media/Fonts),
+-- Medium for text and SemiBold for display sizes (18 and up). Arial Narrow,
+-- which ships with the client, is the fallback if the files cannot load.
+local FONT_DIR = "Interface\\AddOns\\SoulUI\\Media\\Fonts\\"
+UI.DEFAULT_FONT = FONT_DIR .. "BarlowSemiCondensed-Medium.ttf"
+UI.DEFAULT_BOLD = FONT_DIR .. "BarlowSemiCondensed-SemiBold.ttf"
+UI.FALLBACK_FONT = "Fonts\\ARIALN.TTF"
+local BOLD_FROM = 18
 local fontRegistry = setmetatable({}, { __mode = "k" })
 
-function UI.FontPath()
+function UI.FontPath(size)
 	local name = Soul.db and Soul.db.account and Soul.db.account.uiFont
 	if type(name) == "string" and name ~= "" then
 		local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
 		local path = LSM and LSM:Fetch("font", name, true)
 		if path then return path end
 	end
+	if size and size >= BOLD_FROM then return UI.DEFAULT_BOLD end
 	return UI.DEFAULT_FONT
 end
 
@@ -48,10 +56,10 @@ end
 function UI.SetFont(object, size)
 	size = size or 13
 	fontRegistry[object] = size
-	object:SetFont(UI.FontPath(), size, "")
-	-- A missing font file leaves the object without a font: fall back.
-	if not object:GetFont() then
-		object:SetFont(UI.DEFAULT_FONT, size, "")
+	-- SetFont returns false when the file cannot be loaded; fall back.
+	local ok = object:SetFont(UI.FontPath(size), size, "")
+	if ok == false or not object:GetFont() then
+		object:SetFont(UI.FALLBACK_FONT, size, "")
 	end
 end
 

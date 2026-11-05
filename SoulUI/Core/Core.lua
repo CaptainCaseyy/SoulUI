@@ -3,7 +3,7 @@ if SoulUI_Blocked then return end
 SoulUI = SoulUI or {}
 local Soul = SoulUI
 
-Soul.version = "0.6.0"
+Soul.version = "0.6.1"
 Soul.modules = {}
 Soul.optionPages = {}
 Soul._callbacks = {}

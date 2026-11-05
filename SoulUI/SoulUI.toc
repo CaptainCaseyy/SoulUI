@@ -2,7 +2,7 @@
 ## Title: SoulUI
 ## Notes: SoulBound unit-frame and nameplate core
 ## Author: SoulBound
-## Version: 0.6.0
+## Version: 0.6.1
 ## SavedVariables: SoulUIDB
 ## Category: SoulUI
 ## Group: SoulUI

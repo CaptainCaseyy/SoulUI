@@ -82,7 +82,7 @@ local function BuildLook(col)
 		type = "dropdown", label = "Window font", width = 220,
 		tooltip = "Font for this window and edit mode. Frames keep the font above. Window scale is the slider at the top right of this window.",
 		items = function()
-			local items = { { value = "", label = "SoulUI default (Arial Narrow)" } }
+			local items = { { value = "", label = "SoulUI default (Barlow)" } }
 			local media = UI.MediaItems("font")
 			for i = 1, #media do items[#items + 1] = media[i] end
 			return items

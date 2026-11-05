@@ -2,6 +2,25 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-05 — laptop — 0.6.1 bundled UI font
+
+The owner asked to bundle a font for a closer match to Ellesmere's typography. Arial Narrow, the 0.6.0 default, was the nearest font the client ships.
+
+**Font.** Barlow Semi Condensed, Medium and SemiBold, by The Barlow Project Authors. License: SIL Open Font License 1.1, kept next to the fonts as `SoulUI/Media/Fonts/OFL-Barlow.txt`. Downloaded from github.com/google/fonts (`ofl/barlowsemicondensed`).
+- **Where it is used:** it is the default for the settings window and edit mode. Text 18px and larger uses SemiBold; everything else uses Medium.
+- **Fallback:** if a file fails to load, `UI.SetFont` uses `Fonts\ARIALN.TTF`.
+- **Font lists:** registered with LibSharedMedia as "SoulUI Barlow" and "SoulUI Barlow SemiBold", so the fonts can also be picked for frames.
+- **General > Look > Window font:** the default entry now reads "SoulUI default (Barlow)".
+
+**Files.**
+- New: `SoulUI/Media/Fonts/` (two .ttf files and the license).
+- Changed: `Core/UIKit.lua` (`UI.FontPath(size)`, `DEFAULT_BOLD`, `FALLBACK_FONT`), `Core/Media.lua`, `SoulUI_Options/Pages.lua`.
+- SoulUI and SoulUI_Options are now 0.6.1.
+
+**Not tested in game.** The fonts have not been seen in game yet. Barlow is slightly wider than Arial Narrow, so check that long labels and the tabs still fit.
+
+**Note.** `tools/lint.mjs` does not flag invalid Lua string escapes such as `"Interface\AddOns"` written with single backslashes. Such a path was caught by hand in this change. Write paths as `"Interface\\AddOns..."` in Lua source.
+
 ## 2026-11-05 — laptop — 0.6.0 settings window redesign
 
 The owner sent a screenshot of EllesmereUI's Global Settings window and asked for a full redesign of `/soul` to that level of cleanliness. The design comes from studying the screenshot; no Ellesmere code or assets were used.
