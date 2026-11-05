@@ -2,7 +2,7 @@
 ## Title: SoulUI Group Frames
 ## Notes: Party and raid frames
 ## Author: SoulBound
-## Version: 0.4.0
+## Version: 0.5.0
 ## Dependencies: SoulUI
 ## Category: SoulUI
 ## Group: SoulUI

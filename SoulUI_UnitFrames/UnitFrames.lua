@@ -603,6 +603,7 @@ function UF:Apply(scope)
 		self:Layout(UNITS[i])
 	end
 	SuppressBlizzard()
+	if Soul.Blizz then Soul.Blizz.Refresh() end
 end
 
 function UF:OnInitialize()
@@ -627,6 +628,12 @@ function UF:OnEnable()
 			key = "UnitFrames:" .. unitKey,
 			label = LABELS[unitKey],
 			getFrame = function() return frame end,
+			getEnabled = function() return DB().units[unitKey].enabled end,
+			setEnabled = function(on)
+				DB().units[unitKey].enabled = on and true or false
+				UF:Layout(unitKey)
+				if Soul.Blizz then Soul.Blizz.Refresh() end
+			end,
 			fallback = function()
 				local cfg = DB().units[unitKey]
 				return { point = "CENTER", relPoint = "CENTER", x = cfg.x, y = cfg.y }
@@ -661,7 +668,12 @@ function UF:OnEnable()
 		Soul:RegisterMover({
 			key = "UnitFrames:" .. unitKey .. ":cast",
 			label = LABELS[unitKey] .. " Cast Bar",
-			isHidden = function() return not DB().units[unitKey].showCast end,
+			getEnabled = function() return DB().units[unitKey].showCast end,
+			setEnabled = function(on)
+				DB().units[unitKey].showCast = on and true or false
+				UF:Layout(unitKey)
+				if Soul.Blizz then Soul.Blizz.Refresh() end
+			end,
 			getFrame = function() return frame.Cast end,
 			fallback = function()
 				return {

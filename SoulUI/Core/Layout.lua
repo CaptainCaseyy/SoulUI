@@ -177,6 +177,7 @@ function Soul:BuildDefaultLayout(profile)
 
 	profile._layoutVersion = LAYOUT_VERSION
 	profile._layoutSize = { W, H }
+	profile._singleCast = true
 	return true
 end
 
@@ -215,11 +216,24 @@ local function PartyVertical(profile)
 	Pos(profile.unlock.positions, "GroupFrames:party", x, y)
 end
 
+-- 0.5.0: the player cast bar is the Resources one at the bottom. Profiles that
+-- also had the player (or pet) unit-frame cast bar on turn it off once; it can
+-- be turned back on from edit mode or the Unit Frames page.
+local function SingleCast(profile)
+	if profile._singleCast then return end
+	profile._singleCast = true
+	local units = profile.modules and profile.modules.UnitFrames and profile.modules.UnitFrames.units
+	if type(units) ~= "table" then return end
+	if type(units.player) == "table" then units.player.showCast = false end
+	if type(units.pet) == "table" then units.pet.showCast = false end
+end
+
 -- Login: write the default layout once per layout version.
 function Soul:ApplyDefaultLayout()
 	local profile = self:ActiveProfile()
 	if profile._layoutVersion == LAYOUT_VERSION then
 		PartyVertical(profile)
+		SingleCast(profile)
 		return
 	end
 	if self:BuildDefaultLayout(profile) then

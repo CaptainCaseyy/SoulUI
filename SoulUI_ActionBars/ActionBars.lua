@@ -780,7 +780,11 @@ function AB:OnEnable()
 		Soul:RegisterMover({
 			key = "ActionBars:" .. barKey,
 			label = def.label,
-			isHidden = function() return not DB().bars[barKey].enabled end,
+			getEnabled = function() return DB().bars[barKey].enabled end,
+			setEnabled = function(on)
+				DB().bars[barKey].enabled = on and true or false
+				AB:Apply()
+			end,
 			getFrame = function()
 				local pack = AB.bars[barKey]
 				return pack and pack.holder

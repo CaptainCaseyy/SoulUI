@@ -163,6 +163,82 @@ local function BuildModules(col)
 	end
 end
 
+-- Every movable element, grouped by module, with a shown / hidden switch
+-- (the same switch as the edit-mode inspector), plus Blizzard frames.
+local GROUPS = {
+	{ prefix = "UnitFrames", title = "Unit Frames" },
+	{ prefix = "ResourceBars", title = "Resources" },
+	{ prefix = "ActionBars", title = "Action Bars" },
+	{ prefix = "GroupFrames", title = "Party and Raid" },
+	{ prefix = "DamageMeters", title = "Damage Meters" },
+	{ prefix = "Blizzard", title = "Blizzard Cooldown Manager" },
+}
+
+local function BlizzCfg() return Soul.Blizz.Settings() end
+local function BlizzSet(key)
+	return function(v)
+		BlizzCfg()[key] = v and true or false
+		Soul.Blizz.Refresh()
+	end
+end
+
+local function ElementRow(element)
+	return {
+		type = "toggle", label = element.label or element.key,
+		get = function()
+			local ok, on = pcall(element.getEnabled)
+			return ok and on and true or false
+		end,
+		set = function(v)
+			if InCombatLockdown() then
+				Soul:Print("Wait until combat ends to show or hide frames.")
+				return
+			end
+			element.setEnabled(v and true or false)
+		end,
+	}
+end
+
+local function BuildVisibility(col)
+	W.Note(col, "Hide any SoulUI element. Hidden elements still show as dim boxes in edit mode (/soul move), where you can select one and switch it back on.")
+	if Soul.Blizz then
+		W.Section(col, "Blizzard frames")
+		W.Row2(col, {
+			type = "toggle", label = "Hide Blizzard's cast bar",
+			tooltip = "Hides Blizzard's player and pet cast bars while a SoulUI player cast bar is on (Resources or the player unit frame).",
+			get = function() return BlizzCfg().hideCastBar end,
+			set = BlizzSet("hideCastBar"),
+		}, {
+			type = "toggle", label = "Personal resource display",
+			tooltip = "Blizzard's health, power and cast plate above your character.",
+			get = function() return BlizzCfg().personalDisplay end,
+			set = BlizzSet("personalDisplay"),
+		})
+		W.Row(col, {
+			type = "toggle", label = "Blizzard Cooldown Manager",
+			tooltip = "Blizzard's rows of spell and buff icons (Essential, Utility, Buff Icons, Buff Bars). When on, each row can be moved and hidden in edit mode.",
+			get = function() return BlizzCfg().cooldownManager end,
+			set = BlizzSet("cooldownManager"),
+		})
+	end
+	for g = 1, #GROUPS do
+		local group = GROUPS[g]
+		local list = {}
+		for key, element in pairs(Soul._movers) do
+			if element.setEnabled and element.getEnabled and key:match("^([^:]+)") == group.prefix then
+				list[#list + 1] = element
+			end
+		end
+		if #list > 0 then
+			table.sort(list, function(a, b) return a.key < b.key end)
+			W.Section(col, group.title)
+			for i = 1, #list, 2 do
+				W.Row2(col, ElementRow(list[i]), list[i + 1] and ElementRow(list[i + 1]) or nil)
+			end
+		end
+	end
+end
+
 local function BuildTools(col)
 	W.Section(col, "Layout")
 	W.Buttons(col, {
@@ -197,13 +273,14 @@ end
 Soul:RegisterPage({
 	key = "general",
 	title = "General",
-	description = "Accent color, font, bar texture, cast colors, modules and test tools.",
+	description = "Accent color, font, bar texture, cast colors, hiding elements, modules and test tools.",
 	group = "SoulUI",
 	groupOrder = 1,
 	order = 1,
 	tabs = {
 		{ key = "look", title = "Look", build = BuildLook },
 		{ key = "casts", title = "Casts", build = BuildCasts, preview = function(...) return Soul.Previews.Casts(...) end },
+		{ key = "visibility", title = "Hide & Show", build = BuildVisibility },
 		{ key = "modules", title = "Modules", build = BuildModules },
 		{ key = "tools", title = "Tools", build = BuildTools },
 	},

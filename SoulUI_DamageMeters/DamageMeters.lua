@@ -820,6 +820,13 @@ function DM:OnEnable()
 			key = "DamageMeters:" .. index,
 			label = "Meter " .. index,
 			getFrame = function() return DM.windows[index] end,
+			getEnabled = function() return DB().enabled and DB().windows[index].enabled end,
+			setEnabled = function(on)
+				local db = DB()
+				db.windows[index].enabled = on and true or false
+				if on then db.enabled = true end
+				DM:Apply()
+			end,
 			fallback = function()
 				local cfg = DB().windows[index]
 				return { point = "CENTER", relPoint = "CENTER", x = cfg.x, y = cfg.y }

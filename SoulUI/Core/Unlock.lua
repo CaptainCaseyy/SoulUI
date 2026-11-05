@@ -19,7 +19,11 @@ if SoulUI_Blocked then return end
 --   onResize(w, h)                    write the new size into module settings
 --   getColor() / setColor(r, g, b)    optional main color
 --   onEdit(on)                        edit mode opened / closed (previews)
---   isHidden() -> bool                skip the mover (disabled element)
+--   isHidden() -> bool                skip the mover entirely (not applicable)
+--   getEnabled() / setEnabled(on)     shown / hidden switch (module setting). A hidden
+--                                     element keeps a dim "ghost" mover so it can be
+--                                     shown again from edit mode.
+--   onReset()                         after Reset Position (elements without a fallback)
 --   page                              settings page key (defaults by module)
 
 local Soul = SoulUI
@@ -36,6 +40,7 @@ local PAGE_BY_MODULE = {
 	GroupFrames = "groupframes",
 	DamageMeters = "meters",
 	Nameplates = "nameplates",
+	Blizzard = "general",
 }
 
 local POINT_LABEL = {
@@ -51,13 +56,14 @@ local session
 
 local function Settings()
 	local account = Soul.db and Soul.db.account
-	if not account then return { grid = true, snap = true, gridSize = 32, shade = 0.35 } end
+	if not account then return { grid = true, snap = true, gridSize = 32, shade = 0.35, ghosts = true } end
 	if type(account.edit) ~= "table" then account.edit = {} end
 	local edit = account.edit
 	if edit.grid == nil then edit.grid = true end
 	if edit.snap == nil then edit.snap = true end
 	if type(edit.gridSize) ~= "number" then edit.gridSize = 32 end
 	if type(edit.shade) ~= "number" then edit.shade = 0.35 end
+	if edit.ghosts == nil then edit.ghosts = true end
 	return edit
 end
 
@@ -102,8 +108,12 @@ function Soul:Place(frame, key, fallback)
 	if not pos then return end
 	local function apply()
 		local relative = RelativeFrame(pos, frame, key)
+		-- Offsets are stored in UIParent units; SetPoint reads them in the
+		-- frame's own scale (Blizzard frames such as the Cooldown Manager scale).
+		local ratio = frame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+		if not ratio or ratio <= 0 then ratio = 1 end
 		frame:ClearAllPoints()
-		frame:SetPoint(pos.point or "CENTER", relative, pos.relPoint or "CENTER", pos.x or 0, pos.y or 0)
+		frame:SetPoint(pos.point or "CENTER", relative, pos.relPoint or "CENTER", (pos.x or 0) / ratio, (pos.y or 0) / ratio)
 	end
 	if InCombatLockdown() and frame.IsProtected and frame:IsProtected() then
 		self:RunAfterCombat("place:" .. key, apply)
@@ -152,6 +162,34 @@ end
 
 local function FrameOf(element)
 	return element and element.getFrame and element.getFrame()
+end
+
+-- false when the element's own setting hides it (ghost mover).
+local function IsOn(element)
+	if not element or not element.getEnabled then return true end
+	local ok, on = pcall(element.getEnabled)
+	if not ok then return true end
+	return on and true or false
+end
+
+-- Mover box: the frame's rect, or a fixed tag when a hidden frame has no size.
+local function FitMover(mover, frame)
+	mover:ClearAllPoints()
+	if frame:GetNumPoints() == 0 then
+		-- Never placed (disabled since login): put the tag at its saved spot.
+		local element = mover.element
+		local pos = SavedPos(element)
+		mover:SetPoint(pos.point or "CENTER", RelativeFrame(pos, frame, element and element.key), pos.relPoint or "CENTER", pos.x or 0, pos.y or 0)
+		mover:SetSize(150, 26)
+		return
+	end
+	local w, h = frame:GetWidth(), frame:GetHeight()
+	if (w or 0) < 4 or (h or 0) < 4 then
+		mover:SetPoint("CENTER", frame, "CENTER")
+		mover:SetSize(150, 26)
+	else
+		mover:SetAllPoints(frame)
+	end
 end
 
 -- Rewrites pos.x / pos.y from where the frame sits now, keeping its anchor.
@@ -358,6 +396,13 @@ local function PaintMover(mover)
 	local r, g, b = Soul:Accent()
 	local on = mover == selected
 	local hover = mover._hover
+	if mover._ghost then
+		mover.fill:SetColorTexture(0.1, 0.1, 0.11, on and 0.6 or (hover and 0.5 or 0.35))
+		mover.outline:SetColor(0.55, 0.55, 0.6, on and 0.9 or (hover and 0.6 or 0.3))
+		mover.label:SetTextColor(on and r or 0.6, on and g or 0.6, on and b or 0.62)
+		mover.size:Hide()
+		return
+	end
 	mover.fill:SetColorTexture(r * 0.25, g * 0.25, b * 0.25, on and 0.55 or (hover and 0.45 or 0.32))
 	mover.outline:SetColor(r, g, b, on and 1 or (hover and 0.8 or 0.45))
 	mover.label:SetTextColor(on and r or 1, on and g or 1, on and b or 1)
@@ -398,8 +443,7 @@ local function ApplySize(element, width, height)
 	if session then session.dirty = true end
 	local mover = Soul._moverFrames[element.key]
 	if mover then
-		mover:ClearAllPoints()
-		mover:SetAllPoints(frame)
+		FitMover(mover, frame)
 		PaintMover(mover)
 	end
 end
@@ -428,9 +472,8 @@ local function Nudge(dx, dy)
 	copy.x = Soul.Pixel:Scale((copy.x or 0) + dx)
 	copy.y = Soul.Pixel:Scale((copy.y or 0) + dy)
 	Store(element, copy)
-	selected:ClearAllPoints()
 	local frame = FrameOf(element)
-	if frame then selected:SetAllPoints(frame) end
+	if frame then FitMover(selected, frame) end
 	FillInspector()
 end
 
@@ -452,9 +495,8 @@ local function StartDrag(mover)
 			self:SetScript("OnUpdate", nil)
 			ShowGuides(nil, nil)
 			if self.moved then Rehome(self.element) end
-			self:ClearAllPoints()
 			local live = FrameOf(self.element)
-			if live then self:SetAllPoints(live) end
+			if live then FitMover(self, live) end
 			FillInspector()
 			return
 		end
@@ -478,8 +520,7 @@ local function StartDrag(mover)
 		local ratio = frame:GetEffectiveScale() / UIParent:GetEffectiveScale()
 		frame:ClearAllPoints()
 		frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", Soul.Pixel:Scale(ncx) / ratio, Soul.Pixel:Scale(ncy) / ratio)
-		self:ClearAllPoints()
-		self:SetAllPoints(frame)
+		FitMover(self, frame)
 		ShowGuides(gx, gy)
 		if FillInspector and inspector and inspector:IsShown() then inspector.RefreshNumbers() end
 	end)
@@ -490,8 +531,10 @@ function Soul:ShowMover(key)
 	if not element then return end
 	local frame = FrameOf(element)
 	local mover = self._moverFrames[key]
-	if not frame or (element.isHidden and element.isHidden()) then
+	local ghost = not IsOn(element)
+	if not frame or (element.isHidden and element.isHidden()) or (ghost and not Settings().ghosts) then
 		if mover then mover:Hide() end
+		if mover and mover == selected then Select(nil) end
 		return
 	end
 	if not mover then
@@ -539,9 +582,9 @@ function Soul:ShowMover(key)
 		self._moverFrames[key] = mover
 	end
 	mover.element = element
-	mover.label:SetText(element.label or key)
-	mover:ClearAllPoints()
-	mover:SetAllPoints(frame)
+	mover._ghost = ghost
+	mover.label:SetText(ghost and ((element.label or key) .. "  (hidden)") or (element.label or key))
+	FitMover(mover, frame)
 	mover:Show()
 	PaintMover(mover)
 end
@@ -579,7 +622,7 @@ end
 
 local function EnsureToolbar()
 	if toolbar then return toolbar end
-	toolbar = UI.Window("SoulUI_EditToolbar", "SoulUI  Edit Mode", 860, 92, { strata = "TOOLTIP", noClose = true })
+	toolbar = UI.Window("SoulUI_EditToolbar", "SoulUI  Edit Mode", 980, 92, { strata = "TOOLTIP", noClose = true })
 	toolbar:SetFrameLevel(50)
 
 	local hint = UI.Text(toolbar.bar, 11, UI.C.dim, "RIGHT")
@@ -619,6 +662,16 @@ local function EnsureToolbar()
 	end)
 	shade:SetPoint("LEFT", shadeLabel, "RIGHT", 8, 0)
 
+	local ghostSwitch = UI.Switch(row, function() return Settings().ghosts end, function(v)
+		Settings().ghosts = v and true or false
+		ShowAllMovers()
+		FillInspector()
+	end)
+	ghostSwitch:SetPoint("LEFT", shade, "RIGHT", 18, 0)
+	local ghostLabel = Label(row, "Hidden")
+	ghostLabel:SetPoint("LEFT", ghostSwitch, "RIGHT", 8, 0)
+	UI.Tip(ghostSwitch, "Hidden elements", "Show dim boxes for elements you have hidden, so you can select them and turn them back on.")
+
 	local save = UI.Button(row, "Save & Exit", 110, 30, function() Soul:CommitUnlock() end, "accent")
 	save:SetPoint("RIGHT", -14, 0)
 	local cancel = UI.Button(row, "Cancel", 80, 30, function() Soul:CloseUnlock(true) end)
@@ -641,6 +694,7 @@ local function EnsureToolbar()
 		snapSwitch.Refresh()
 		gridSize.Refresh()
 		shade.Refresh()
+		ghostSwitch.Refresh()
 	end
 	return toolbar
 end
@@ -651,7 +705,7 @@ end
 
 local function EnsureInspector()
 	if inspector then return inspector end
-	inspector = UI.Window("SoulUI_EditInspector", "Element", 300, 452, {
+	inspector = UI.Window("SoulUI_EditInspector", "Element", 300, 500, {
 		strata = "TOOLTIP",
 		onClose = function() Select(nil) end,
 	})
@@ -816,6 +870,23 @@ local function EnsureInspector()
 	end)
 	swatch:SetPoint("LEFT", colorLabel, "RIGHT", 8, 0)
 
+	Heading("Visibility", -360)
+	local shownSwitch = UI.Switch(body, function()
+		return IsOn(Current())
+	end, function(v)
+		local element = Current()
+		if not element or not element.setEnabled or InCombatLockdown() then return end
+		element.setEnabled(v and true or false)
+		if session then session.dirty = true end
+		Soul:ShowMover(element.key)
+		FillInspector()
+	end)
+	shownSwitch:SetPoint("TOPLEFT", 0, -380)
+	local shownLabel = Label(body, "Shown")
+	shownLabel:SetPoint("LEFT", shownSwitch, "RIGHT", 8, 0)
+	local shownNote = UI.Text(body, 11, UI.C.faint)
+	shownNote:SetPoint("LEFT", shownLabel, "RIGHT", 12, 0)
+
 	local settingsButton = UI.Button(body, "Element Settings", 130, 30, function()
 		local element = Current()
 		if element then OpenSettingsFor(element) end
@@ -828,11 +899,9 @@ local function EnsureInspector()
 		local fallback = element.fallback and element.fallback()
 		local frame = FrameOf(element)
 		if frame and fallback then Soul:Place(frame, element.key, fallback) end
+		if element.onReset then pcall(element.onReset) end
 		if session then session.dirty = true end
-		if selected then
-			selected:ClearAllPoints()
-			if frame then selected:SetAllPoints(frame) end
-		end
+		if selected and frame then FitMover(selected, frame) end
 		FillInspector()
 	end)
 	resetButton:SetPoint("BOTTOMRIGHT", 0, 0)
@@ -860,6 +929,9 @@ local function EnsureInspector()
 		hBox:SetEnabled(canSize)
 		swatch:SetDisabled(not element.getColor)
 		swatch.Refresh()
+		shownSwitch:SetDisabled(not element.setEnabled)
+		shownSwitch.Refresh()
+		shownNote:SetText(element.setEnabled and "" or "always shown")
 	end
 	return inspector
 end
@@ -943,6 +1015,7 @@ function Soul:CloseUnlock(revert)
 			end
 		end
 		profile._layoutVersion = session.layoutVersion
+		profile.blizzard = session.blizzard
 	end
 	local reverted = revert and session and session.dirty
 	session = nil
@@ -970,6 +1043,7 @@ function Soul:OpenUnlock()
 		positions = self:Copy(profile.unlock.positions),
 		modules = self:Copy(profile.modules),
 		layoutVersion = profile._layoutVersion,
+		blizzard = self:Copy(profile.blizzard),
 		dirty = false,
 	}
 	ShowSession()

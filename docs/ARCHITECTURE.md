@@ -76,7 +76,7 @@ SoulUIDB = {
   cvars = { },                 -- [cvar] = { original = "...", owner = "Module" }
   account = { debug = false, panelScale = 1, welcomed = true,
               windows = { [frameName] = { point, relPoint, x, y } },   -- movable SoulUI windows
-              edit = { grid, snap, gridSize, shade } },                 -- edit mode toolbar
+              edit = { grid, snap, gridSize, shade, ghosts } },         -- edit mode toolbar
   _migrations = { },
   profiles = {
     Default = {
@@ -91,6 +91,10 @@ SoulUIDB = {
       },
       unlock = { positions = { ["UnitFrames:player"] = { point, relPoint, relative, x, y } } },
       _layoutVersion = 3,       -- Core/Layout.lua default layout already written
+      _partyVertical = true,    -- 0.4.0 party switch done
+      _singleCast = true,       -- 0.5.0 player/pet unit-frame cast bars turned off once
+      blizzard = { hideCastBar = true, personalDisplay = false, cooldownManager = false,
+                   hiddenViewers = { [viewerFrameName] = true } },   -- Core/Blizzard.lua
       modules = {
         UnitFrames = { },
         Nameplates = { },
@@ -151,7 +155,9 @@ Both are built from `Core/UIKit.lua` (`SoulUI.UI`): movable windows (`UI.Window`
 
 **Settings (`/soul`, SoulUI_Options, LoadOnDemand).** A movable 1240x800 window (drag the header or brand): accent-tinted gradient, sidebar (brand, search all, grouped page rows with module on/off dots, active profile), page header, tab bar with page search, optional live preview strip (`Previews.lua`, `preview(holder, width) -> height, update`), card sections, eased scroll, footer (Reset Page, Reload UI, Edit Mode, Done). Pages may set `addon` for the sidebar dot. Pages register with `SoulUI:RegisterPage { key, title, description, group, groupOrder, order, build(col) | tabs = { { key, title, build(col) } }, reset() }`. Builders stack declarative rows: `W.Section`, `W.Note`, `W.Row(spec)`, `W.Row2(left, right)`, `W.Selector` (per-unit / per-bar editing), `W.Buttons`, `W.Input`, `W.TextArea`, `W.List`. A spec is `{ type = toggle|slider|dropdown|font|statusbar|color|button|number, label, get, set, disabled, tooltip }`. Every set refreshes the whole page, so `disabled` rows grey out immediately. Rows are indexed for the sidebar search, which builds unvisited pages on first use, jumps to the page and flashes the row. `Soul:OpenOptions(pageKey)` opens on a page. There is no Apply button.
 
-**Edit mode (`/soul move`, `Core/Unlock.lua`).** A movable toolbar (grid, snap, grid size, dim, Settings, Reset Layout, Cancel, Save & Exit), an overlay that dims the world and draws the grid, one mover per element, and a movable inspector for the selected element (X/Y, W/H, anchor-to element, this point / target point pickers, nudge, color, element settings, reset position). Drag snaps within 6px to the screen center and edges, other movers' edges and centers, then the grid, with accent guide lines; Shift locks the axis, Alt disables snapping. Wheel resizes by one physical pixel, arrows nudge 1px (Shift 10px), right-click opens the element's settings page. Edits write into the profile live; Cancel restores a snapshot of positions **and module settings** (resizing writes module settings) and fires `ProfileChanged`. Combat hides the session and resumes it 0.5s after combat. Mover elements: `key, label, getFrame, fallback, onResize, getColor, setColor, onEdit, isHidden, page`.
+**Edit mode (`/soul move`, `Core/Unlock.lua`).** A movable toolbar (grid, snap, grid size, dim, Settings, Reset Layout, Cancel, Save & Exit), an overlay that dims the world and draws the grid, one mover per element, and a movable inspector for the selected element (X/Y, W/H, anchor-to element, this point / target point pickers, nudge, color, element settings, reset position). Drag snaps within 6px to the screen center and edges, other movers' edges and centers, then the grid, with accent guide lines; Shift locks the axis, Alt disables snapping. Wheel resizes by one physical pixel, arrows nudge 1px (Shift 10px), right-click opens the element's settings page. Edits write into the profile live; Cancel restores a snapshot of positions **and module settings** (resizing writes module settings) and fires `ProfileChanged`. Combat hides the session and resumes it 0.5s after combat. Mover elements: `key, label, getFrame, fallback, onResize, getColor, setColor, onEdit, isHidden, getEnabled, setEnabled, page`.
+
+**Hiding elements (0.5.0).** `getEnabled()` / `setEnabled(on)` map an element to its module's own enable flag (`units[u].enabled`, `units[u].showCast`, `bars[k].enabled`, `showPrimary/showPips/showCast/showGCD`, `party/raid.enabled`, `windows[i].enabled`). There is no separate "hidden" table: hiding is the module setting, so it saves per profile, Cancel reverts it with the module snapshot, and the module's own page shows the same state. A hidden element keeps a dim "ghost" mover labelled "(hidden)" (toolbar switch "Hidden", `account.edit.ghosts`); the inspector's "Shown" switch toggles it. General > Hide & Show lists every element with `setEnabled`, grouped by module, plus the Blizzard toggles. `isHidden()` is now only for movers that do not apply at all. New movers must provide both functions. `Soul:Place` divides offsets by the frame's scale ratio, so frames with their own scale (Blizzard's) land where the UIParent-unit position says.
 
 ## Casts and auras (0.4.0)
 
@@ -159,9 +165,17 @@ Both are built from `Core/UIKit.lua` (`SoulUI.UI`): movable windows (`UI.Window`
 
 `Core/Auras.lua` (`SoulUI.Auras`) is the only aura path: `AuraContainer` groups with filter strings. `Auras.Icons` makes icon rows; `Auras.Highlight` makes one frame-sized button that exists only while the filter matches (the filter is the test, Lua never reads aura data). Filters used: `HARMFUL|RAID_PLAYER_DISPELLABLE` (cleansable on friends), `HELPFUL|DISPELLABLE` (purge/soothe on enemies), `HARMFUL|PLAYER` (your debuffs). `Auras.OffensiveDispel()` answers "can this character purge / soothe" from the spellbook. Containers are created out of combat only; friendly nameplates are never modified (forbidden in instances).
 
+## Blizzard frames (0.5.0)
+
+`Core/Blizzard.lua` (`SoulUI.Blizz`, settings `profile.blizzard`):
+- **Player/pet cast bar:** `PlayerCastingBarFrame` and `PetCastingBarFrame` are parked (re-parented to a hidden frame) while `hideCastBar` is on and a SoulUI player cast bar is on (Resources cast or the player unit-frame cast). A `SetParent` hook re-parks on the next frame when Blizzard (Edit Mode) re-parents it. Same approach Ellesmere uses; events are not unregistered, so turning it off simply un-parks.
+- **Personal resource display:** CVar `nameplateShowSelf` (off by default).
+- **Cooldown Manager:** CVar `cooldownViewerEnabled` (off by default; Ellesmere had turned it on, which is the "icon row next to the bars" from the 0.4.0 test). When on, each viewer (`Essential/Utility/BuffIcon/BuffBarCooldownViewer`) has a mover (`Blizzard:<frame>`), can be hidden on its own (parked, `hiddenViewers`), and a position saved in SoulUI edit mode is re-applied through a `SetPoint` hook after Edit Mode re-anchors. Viewers without a SoulUI position are left where Blizzard puts them.
+- Everything runs out of combat (`RunAfterCombat`). `Blizz.Refresh()` is called on Ready, ProfileChanged, and at the end of UF:Apply / RB:Apply.
+
 ## What 0.3.0 still does not do
 
-Absorbs and heal prediction on unit frames. Aura containers on the player, target, and nameplates (raid and party buttons do get one dispel row). Stance bar and pet bar (those stay Blizzard's). The cooldown manager, by request. Swing timer, totems, custom bar paging, and flyout reskins. Chat, bags, minimap, quest tracker, data bars, mythic timer. Per-setting spec overrides.
+Absorbs and heal prediction on unit frames. Aura containers on the player, target, and nameplates (raid and party buttons do get one dispel row). Stance bar and pet bar (those stay Blizzard's). Reskinning the cooldown manager (0.5.0 only shows, hides and moves it). Swing timer, totems, custom bar paging, and flyout reskins. Chat, bags, minimap, quest tracker, data bars, mythic timer. Per-setting spec overrides.
 
 Next builds, unless a test shows 0.2.0 is wrong:
 

@@ -635,6 +635,11 @@ function GF:OnEnable()
 		key = "GroupFrames:party",
 		label = "Party",
 		getFrame = function() return party.holder end,
+		getEnabled = function() return DB().party.enabled end,
+		setEnabled = function(on)
+			DB().party.enabled = on and true or false
+			GF:Apply("all")
+		end,
 		fallback = function()
 			local cfg = DB().party
 			return { point = "CENTER", relPoint = "CENTER", x = cfg.x, y = cfg.y }
@@ -647,6 +652,11 @@ function GF:OnEnable()
 		key = "GroupFrames:raid",
 		label = "Raid",
 		getFrame = function() return raid.holder end,
+		getEnabled = function() return DB().raid.enabled end,
+		setEnabled = function(on)
+			DB().raid.enabled = on and true or false
+			GF:Apply("all")
+		end,
 		fallback = function()
 			local cfg = DB().raid
 			return { point = "CENTER", relPoint = "CENTER", x = cfg.x, y = cfg.y }

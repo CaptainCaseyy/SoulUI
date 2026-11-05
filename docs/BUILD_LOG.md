@@ -2,6 +2,41 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-05 — laptop — 0.5.0 one player cast bar, hide any element, Cooldown Manager
+
+The owner tested 0.4.0 (edit-mode screenshot). Problems:
+- **Three cast bars when casting:** the Resources "Player Cast" at the bottom, the player unit-frame cast bar above the player frame, and Blizzard's own. Only the bottom one should show.
+- **No way to hide an element** from the editor.
+- **A horizontal icon row next to the three left bars** that edit mode could not select. It is Blizzard's Cooldown Manager: `cooldownViewerEnabled` was "1" in this character's config-cache.wtf (EllesmereUI's CDM turns it on), and its Edit Mode position came from the Ellesmere setup.
+
+**One cast bar.**
+- `Core/Blizzard.lua` (new) parks Blizzard's player and pet cast bars while a SoulUI player cast bar is on. Parking means re-parenting to a hidden frame, with a SetParent hook so Edit Mode cannot bring it back.
+- Migration `profile._singleCast` (Layout.lua) turns off the player and pet unit-frame cast bars once. Either one can be turned back on in edit mode or on the Unit Frames page.
+- Blizzard's personal resource display (`nameplateShowSelf`) is off by default too, in case that was the "cast bar above my character".
+
+**Hide any element.**
+- New mover contract `getEnabled/setEnabled`, mapped to each module's existing enable flags. Wired up for unit frames, unit cast bars, the four Resources bars, all eight action bars, party, raid, the three meters and the Cooldown Manager rows.
+- Edit mode: hidden elements keep a dim "(hidden)" box; select it and use the inspector's new "Shown" switch. The toolbar's "Hidden" switch shows or hides those boxes.
+- Settings: General > Hide & Show lists every element by module with a switch, plus the Blizzard toggles (cast bar, personal resource display, Cooldown Manager).
+
+**Cooldown Manager.** Off by default (CVar owned by SoulUI, original value remembered). When turned on, each row is movable and hideable in SoulUI edit mode.
+
+**Other changes.**
+- `Soul:Place` now divides offsets by the frame's scale ratio. This changes nothing for SoulUI frames, which run at scale 1.
+- The edit toolbar is 980 wide and the inspector 500 tall.
+- Edit-mode Cancel also restores `profile.blizzard`.
+
+**Files.** New: `SoulUI/Core/Blizzard.lua`. Changed: `SoulUI/SoulUI.toc`, `Core/Unlock.lua`, `Core/Layout.lua`, `Core/Core.lua`, every module's mover registration, `SoulUI_Options/Pages.lua`. All `.toc` versions are now 0.5.0.
+
+**Untested in game.**
+- Blizzard re-parenting the cast bar mid-session, for example through Blizzard's Edit Mode "lock to player frame".
+- Cooldown Manager viewers moving with a saved SoulUI position while Blizzard Edit Mode also moves them (SoulUI's position wins).
+- Ghost boxes for frames that have no size while hidden. These fall back to a 150x26 tag.
+
+**Review pass.** A review agent found two bugs, both fixed:
+- **Invisible ghost boxes:** an element that was disabled since login (a meter window, a unit frame) was never anchored, so its ghost box did not appear. FitMover now places the tag at the saved or fallback position.
+- **Cancel and Reset Position did not move a Cooldown Manager row back:** Blizzard.lua now remembers each viewer's own anchor and restores it when SoulUI no longer holds a position for it. Viewer movers get `onReset`.
+
 ## 2026-11-05 — laptop — 0.4.0 casts, dispels, vertical party, meter and menu restyle
 
 The owner tested 0.3.0. Edit mode was much better. Still wrong:

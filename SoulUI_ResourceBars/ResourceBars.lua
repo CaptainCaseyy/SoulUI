@@ -476,6 +476,7 @@ function RB:Apply()
 	UpdatePips()
 	RefreshCast()
 	UpdateGCD()
+	if Soul.Blizz then Soul.Blizz.Refresh() end
 end
 
 function RB:OnInitialize()
@@ -559,10 +560,10 @@ function RB:OnEnable()
 	self:RegisterEvent("PLAYER_ENTERING_WORLD", OnEvent)
 
 	local movers = {
-		{ key = "primary", label = "Primary Power", frame = self.primary },
-		{ key = "pips", label = "Class Pips", frame = self.pips },
-		{ key = "cast", label = "Player Cast", frame = self.cast },
-		{ key = "gcd", label = "GCD", frame = self.gcd },
+		{ key = "primary", label = "Primary Power", frame = self.primary, flag = "showPrimary" },
+		{ key = "pips", label = "Class Pips", frame = self.pips, flag = "showPips" },
+		{ key = "cast", label = "Player Cast", frame = self.cast, flag = "showCast" },
+		{ key = "gcd", label = "GCD", frame = self.gcd, flag = "showGCD" },
 	}
 	for i = 1, #movers do
 		local info = movers[i]
@@ -570,6 +571,11 @@ function RB:OnEnable()
 			key = "ResourceBars:" .. info.key,
 			label = info.label,
 			getFrame = function() return info.frame end,
+			getEnabled = function() return DB()[info.flag] end,
+			setEnabled = function(on)
+				DB()[info.flag] = on and true or false
+				RB:Apply()
+			end,
 			fallback = function()
 				local cfg = DB()[info.key]
 				return { point = "CENTER", relPoint = "CENTER", x = cfg.x, y = cfg.y }
