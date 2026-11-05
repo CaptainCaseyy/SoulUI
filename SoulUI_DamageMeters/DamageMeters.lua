@@ -3,9 +3,16 @@ if SoulUI_Blocked or not SoulUI then return end
 local Soul = SoulUI
 local DM = Soul:NewModule("DamageMeters", "SoulUI_DamageMeters")
 
-local MAX_ROWS = 20
-local MAX_SPELLS = 10
+local math_floor, math_ceil, math_abs, math_max, math_min, math_exp = math.floor, math.ceil, math.abs, math.max, math.min, math.exp
+local string_format = string.format
+local type, pcall = type, pcall
+local GetTime, InCombatLockdown = GetTime, InCombatLockdown
+
+local MAX_ROWS = 20 -- most rows a window can show at once
+local POOL = MAX_ROWS + 1 -- one spare row slides in while scrolling smoothly
+local MAX_DATA = 80 -- most entries a window can scroll through
 local WINDOWS = 3
+local WHITE = "Interface\\Buttons\\WHITE8X8"
 
 local TYPES = {
 	{ key = "damage", label = "Damage Done", enum = "DamageDone" },
@@ -13,9 +20,9 @@ local TYPES = {
 	{ key = "taken", label = "Damage Taken", enum = "DamageTaken" },
 	{ key = "avoidable", label = "Avoidable", enum = "AvoidableDamageTaken" },
 	{ key = "enemy", label = "Enemy Damage", enum = "EnemyDamageTaken" },
-	{ key = "interrupts", label = "Interrupts", enum = "Interrupts" },
-	{ key = "dispels", label = "Dispels", enum = "Dispels" },
-	{ key = "deaths", label = "Deaths", enum = "Deaths" },
+	{ key = "interrupts", label = "Interrupts", enum = "Interrupts", count = true },
+	{ key = "dispels", label = "Dispels", enum = "Dispels", count = true },
+	{ key = "deaths", label = "Deaths", enum = "Deaths", count = true },
 }
 
 local SEGMENTS = {
@@ -31,6 +38,14 @@ end
 
 local function DB()
 	return Soul:ModuleDB("DamageMeters")
+end
+
+local function IsSecret(v)
+	return Soul.Secret.IsSecret(v)
+end
+
+local function Present(v)
+	return Soul.Secret.Present(v)
 end
 
 local function TypeInfo(key)
@@ -60,10 +75,18 @@ local function Readable(value)
 	return true
 end
 
+-- A plain (not secret) table entry from a readable list, or nil.
+local function Entry(list, i)
+	local v = list[i]
+	if not Present(v) or IsSecret(v) or type(v) ~= "table" then return nil end
+	if issecrettable and issecrettable(v) then return nil end
+	return v
+end
+
 local function Fighting(unit)
 	if not UnitExists(unit) then return false end
 	local ok, value = pcall(UnitAffectingCombat, unit)
-	if not ok or Soul.Secret.IsSecret(value) then return false end
+	if not ok or IsSecret(value) then return false end
 	return value and true or false
 end
 
@@ -84,15 +107,109 @@ local function GroupInCombat()
 	return false
 end
 
-local function ClockText(secs)
-	local seconds = math.floor(secs % 60)
-	local minutes = math.floor(secs / 60) % 60
-	local hours = math.floor(secs / 3600)
-	if hours > 0 then
-		return string.format("%d:%02d:%02d", hours, minutes, seconds)
-	end
-	return string.format("%d:%02d", minutes, seconds)
+------------------------------------------------------------------------------
+-- Number format
+--
+-- 0.6.1 showed "23M (21.600304115133)". The client's AbbreviateNumbers, called
+-- without options, uses Blizzard's default breakpoints: nothing below 1000 is
+-- abbreviated (a float per-second value comes back with every digit) and 10M+
+-- loses its decimal. We hand it our own breakpoints instead, built once, so
+-- every value reads 1.23B / 23.1M / 35.5K / 21 - in and out of combat, because
+-- the formatting runs engine-side and accepts secret numbers.
+------------------------------------------------------------------------------
+
+local BREAKPOINTS = {
+	{ breakpoint = 1e12, abbreviation = "T", significandDivisor = 1e10, fractionDivisor = 100, abbreviationIsGlobal = false },
+	{ breakpoint = 1e9, abbreviation = "B", significandDivisor = 1e7, fractionDivisor = 100, abbreviationIsGlobal = false },
+	{ breakpoint = 1e6, abbreviation = "M", significandDivisor = 1e5, fractionDivisor = 10, abbreviationIsGlobal = false },
+	{ breakpoint = 1e3, abbreviation = "K", significandDivisor = 100, fractionDivisor = 10, abbreviationIsGlobal = false },
+	{ breakpoint = 0, abbreviation = "", significandDivisor = 1, fractionDivisor = 1, abbreviationIsGlobal = false },
+}
+
+local abbrevOptions -- engine options that passed the probe, or false
+local abbrevProbed = false
+
+local function ProbeOptions(options)
+	if options == nil then return false end
+	-- Below 1000 must come back as a whole number (truncated or rounded), and
+	-- millions with one decimal.
+	local ok, small = pcall(AbbreviateNumbers, 21.600304115133, options)
+	if not ok or IsSecret(small) or type(small) ~= "string" or not small:find("^2[12]$") then return false end
+	local ok2, big = pcall(AbbreviateNumbers, 23123456, options)
+	if not ok2 or IsSecret(big) or type(big) ~= "string" or not big:find("^23%.1%s?M$") then return false end
+	return true
 end
+
+local function PickAbbrevOptions()
+	abbrevProbed = true
+	abbrevOptions = false
+	if not AbbreviateNumbers then return end
+	local config
+	if CreateAbbreviateConfig then
+		local ok, made = pcall(CreateAbbreviateConfig, BREAKPOINTS)
+		if ok and made ~= nil then config = made end
+	end
+	local candidates = { config and { config = config } or nil, config, { breakpointData = BREAKPOINTS } }
+	for i = 1, 3 do
+		local options = candidates[i]
+		if options ~= nil and ProbeOptions(options) then
+			abbrevOptions = options
+			return
+		end
+	end
+end
+
+-- Lua twin of the breakpoints for plain numbers when the engine probe failed.
+local function PlainAbbrev(v)
+	local sign = ""
+	if v < 0 then sign = "-" v = -v end
+	for i = 1, #BREAKPOINTS do
+		local bp = BREAKPOINTS[i]
+		if v >= bp.breakpoint then
+			local n = math_floor(v / bp.significandDivisor) / bp.fractionDivisor
+			local text
+			if bp.fractionDivisor >= 100 then
+				text = string_format("%.2f", n)
+			elseif bp.fractionDivisor >= 10 then
+				text = string_format("%.1f", n)
+			else
+				return string_format("%s%d%s", sign, n, bp.abbreviation)
+			end
+			text = text:gsub("0+$", ""):gsub("%.$", "")
+			return sign .. text .. bp.abbreviation
+		end
+	end
+	return sign .. "0"
+end
+
+local function Abbrev(value)
+	if not abbrevProbed then PickAbbrevOptions() end
+	if abbrevOptions then
+		local ok, text = pcall(AbbreviateNumbers, value, abbrevOptions)
+		if ok then return text end
+	end
+	if not IsSecret(value) then
+		if type(value) ~= "number" then return "" end
+		return PlainAbbrev(value)
+	end
+	-- Secret and no custom breakpoints: the core helper (client defaults).
+	return Soul:Abbrev(value)
+end
+DM.Abbrev = Abbrev
+
+local function ClockText(secs)
+	local seconds = math_floor(secs % 60)
+	local minutes = math_floor(secs / 60) % 60
+	local hours = math_floor(secs / 3600)
+	if hours > 0 then
+		return string_format("%d:%02d:%02d", hours, minutes, seconds)
+	end
+	return string_format("%d:%02d", minutes, seconds)
+end
+
+------------------------------------------------------------------------------
+-- Clocks
+------------------------------------------------------------------------------
 
 function DM:ReadDuration(which)
 	if not C_DamageMeter or not C_DamageMeter.GetSessionDurationSeconds then return nil end
@@ -100,7 +217,7 @@ function DM:ReadDuration(which)
 	local segment = EnumValue(Enum and Enum.DamageMeterSessionType, enumName)
 	if segment == nil then return nil end
 	local ok, secs = pcall(C_DamageMeter.GetSessionDurationSeconds, segment)
-	if not ok or Soul.Secret.IsSecret(secs) or type(secs) ~= "number" then return nil end
+	if not ok or IsSecret(secs) or type(secs) ~= "number" then return nil end
 	-- With no finished session the API has been seen to hand back the client
 	-- uptime (a "301:36:13" clock). A real fight is never a day long.
 	if secs < 0 or secs > 86400 then return nil end
@@ -108,17 +225,19 @@ function DM:ReadDuration(which)
 end
 
 function DM:UpdateClocks()
+	if not self.windows then return end
 	local current = self:ReadDuration("current")
 	local overall = self:ReadDuration("overall")
 	if current then self._pinnedCurrent = current end
 	if overall then self._pinnedOverall = overall end
+	local db = DB()
 	for i = 1, WINDOWS do
 		local window = self.windows[i]
 		if window then
-			local cfg = DB().windows[i]
+			local cfg = db.windows[i]
 			local segment = cfg and cfg.segment
 			local shown = segment == "overall" and (overall or self._pinnedOverall) or (current or self._pinnedCurrent)
-			if shown and not window._breakdown and DB().showClock ~= false then
+			if shown and not window._breakdown and db.showClock ~= false then
 				window.Clock:SetText(ClockText(shown))
 			else
 				window.Clock:SetText("")
@@ -127,117 +246,305 @@ function DM:UpdateClocks()
 	end
 end
 
-local function Ease(bar, value)
-	local interp = Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.ExponentialEaseOut
+------------------------------------------------------------------------------
+-- Rows
+------------------------------------------------------------------------------
+
+local function SetBar(row, value, instant)
+	local interp = not instant and Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.ExponentialEaseOut
 	if interp then
-		bar:SetValue(value, interp)
+		row.Bar:SetValue(value, interp)
 	else
-		bar:SetValue(value)
+		row.Bar:SetValue(value)
 	end
 end
 
 local function ClassColor(class)
-	if not Soul.Secret.IsSecret(class) and type(class) == "string" then
+	if not IsSecret(class) and type(class) == "string" then
 		local color = RAID_CLASS_COLORS[class]
 		if color then return color.r, color.g, color.b end
 	end
 	return Soul:Accent()
 end
 
--- Value text formats. "both" = 23.1M (52.3K), the EllesmereUI-style default.
-local function ValueText(fs, total, perSecond, share, format)
+-- Value mode of a window: "columns" draws the main number and the secondary
+-- number (per second, share) in two right-aligned columns, so digits line up
+-- down the window; "single" draws one string; "count" one plain total.
+local function ValueMode(window, cfg, db)
+	local info = TypeInfo(cfg.type)
+	if info.count and not window._breakdown then return "count" end
+	local format = db.valueFormat or "both"
+	if db.valueColumns ~= false and (format == "both" or format == "percent") then return "columns" end
+	return "single"
+end
+
+-- Plain share of a total in whole percent, or nil while the numbers are secret.
+local function Share(amount, total)
+	if IsSecret(amount) or IsSecret(total) then return nil end
+	if type(amount) ~= "number" or type(total) ~= "number" or total <= 0 then return nil end
+	return math_floor(amount / total * 100 + 0.5)
+end
+
+-- Formats: "both" = 23.1M (35.5K), "pipe" = 23.1M | 35.5K, "total", "persec",
+-- "percent" = 23.1M 28% (falls back to "both" while the share is secret).
+local function ValueText(row, mode, total, perSecond, share, format)
+	local main, side = row.Value2, row.Value
+	if mode == "count" then
+		side:SetFormattedText("%s", Abbrev(total))
+		return
+	end
 	format = format or "both"
+	if mode == "columns" then
+		main:SetFormattedText("%s", Abbrev(total))
+		if format == "percent" and share then
+			side:SetFormattedText("%d%%", share)
+		else
+			side:SetFormattedText("(%s)", Abbrev(perSecond))
+		end
+		return
+	end
 	if format == "total" then
-		fs:SetFormattedText("%s", Soul:Abbrev(total))
+		side:SetFormattedText("%s", Abbrev(total))
 	elseif format == "persec" then
-		fs:SetFormattedText("%s", Soul:Abbrev(perSecond))
+		side:SetFormattedText("%s", Abbrev(perSecond))
 	elseif format == "pipe" then
-		fs:SetFormattedText("%s | %s", Soul:Abbrev(total), Soul:Abbrev(perSecond))
+		side:SetFormattedText("%s | %s", Abbrev(total), Abbrev(perSecond))
 	elseif format == "percent" and share then
-		fs:SetFormattedText("%s  %d%%", Soul:Abbrev(total), share)
+		side:SetFormattedText("%s  %d%%", Abbrev(total), share)
 	else
-		fs:SetFormattedText("%s (%s)", Soul:Abbrev(total), Soul:Abbrev(perSecond))
+		side:SetFormattedText("%s (%s)", Abbrev(total), Abbrev(perSecond))
 	end
 end
 
-local function PaintRow(row, src, maxAmount, deaths)
+local CREST = "Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES"
+
+local function SetIcon(row, db, iconID, class)
+	if db.showIcons == false then
+		row.Icon:Hide()
+		return
+	end
+	if not IsSecret(iconID) and type(iconID) == "number" and iconID > 0 then
+		row.Icon:SetTexture(iconID)
+		row.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+		row.Icon:Show()
+		return
+	end
+	-- No spec yet (out of range, pet): the class crest instead.
+	local coords = not IsSecret(class) and type(class) == "string" and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[class]
+	if coords then
+		row.Icon:SetTexture(CREST)
+		row.Icon:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+		row.Icon:Show()
+	else
+		row.Icon:Hide()
+	end
+end
+
+local function SetRank(row, db, index)
+	if db.showRank then
+		row.Rank:SetFormattedText("%d", index)
+		row.Rank:Show()
+	else
+		row.Rank:Hide()
+	end
+end
+
+-- Snap the bar instead of easing when a row starts showing someone else
+-- (scrolling, a new mode), so bars never sweep between two players' values.
+local function Retarget(row, key)
+	local instant = row._soulKey ~= key
+	row._soulKey = key
+	return instant
+end
+
+local function PaintSource(window, row, src, index, maxAmount, sessionTotal, mode, db)
 	row:Show()
-	local db = DB()
-	local r, g, b = ClassColor(src.classFilename)
+	row._soulIndex = index
+	local class = src.classFilename
+	local r, g, b
 	if db.classColors == false then
 		r, g, b = Soul:Accent()
+	else
+		r, g, b = ClassColor(class)
 	end
 	row.Bar:SetStatusBarColor(r, g, b, db.barAlpha or 1)
-	if row.Rank then
-		local index = row._soulIndex
-		if db.showRank and type(index) == "number" then
-			row.Rank:SetFormattedText("%d.", index)
-			row.Rank:Show()
-		else
-			row.Rank:SetText("")
-			row.Rank:Hide()
-		end
-	end
-	if deaths then
+	SetRank(row, db, index)
+	local instant = Retarget(row, window._paintKey + index)
+	if mode == "count" and window._isDeaths then
 		row.Bar:SetMinMaxValues(0, 1)
 		row.Bar:SetValue(1)
-	elseif Soul.Secret.Present(maxAmount) then
+	elseif Present(maxAmount) then
 		row.Bar:SetMinMaxValues(0, maxAmount)
-		Ease(row.Bar, src.totalAmount)
+		SetBar(row, src.totalAmount, instant)
 	end
 	local name = src.name
-	if not Soul.Secret.IsSecret(name) and type(name) == "string" then
+	if not IsSecret(name) and type(name) == "string" then
 		local dash = name:find("-", 1, true)
 		if dash then name = name:sub(1, dash - 1) end
 	end
 	row.Name:SetText(name or "")
-	local total = src.totalAmount
-	local sessionTotal = row._soulSessionTotal
-	local share
-	if not Soul.Secret.IsSecret(total) and not Soul.Secret.IsSecret(sessionTotal)
-		and type(total) == "number" and type(sessionTotal) == "number" and sessionTotal > 0 then
-		share = math.floor(total / sessionTotal * 100 + 0.5)
-	end
-	if deaths then
+	if window._isDeaths then
 		row.Value:SetText("")
+		row.Value2:SetText("")
 	else
-		ValueText(row.Value, total, src.amountPerSecond, share, db.valueFormat)
+		local share = db.valueFormat == "percent" and Share(src.totalAmount, sessionTotal) or nil
+		ValueText(row, mode, src.totalAmount, src.amountPerSecond, share, db.valueFormat)
 	end
-	local icon = src.specIconID
-	if db.showIcons ~= false and not Soul.Secret.IsSecret(icon) and type(icon) == "number" and icon > 0 then
-		row.Icon:SetTexture(icon)
-		row.Icon:Show()
-	elseif db.showIcons ~= false then
-		-- No spec yet (out of range, pet): show the class crest instead.
-		local class = src.classFilename
-		local coords = not Soul.Secret.IsSecret(class) and type(class) == "string" and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[class]
-		if coords then
-			row.Icon:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
-			row.Icon:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
-			row.Icon:Show()
-			row._soulCrest = true
-		else
-			row.Icon:Hide()
-		end
-	else
-		row.Icon:Hide()
-	end
-	if not row._soulCrest then row.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
-	row._soulCrest = nil
+	SetIcon(row, db, src.specIconID, class)
 	local mine = src.isLocalPlayer
-	if db.markSelf ~= false and not Soul.Secret.IsSecret(mine) and mine then
-		row.Mark:Show()
+	if db.markSelf ~= false and not IsSecret(mine) and mine then
+		row.Self:Show()
+		row.SelfTint:Show()
 	else
-		row.Mark:Hide()
+		row.Self:Hide()
+		row.SelfTint:Hide()
 	end
 	row._soulTip = src
 end
 
-local function HideRows(window)
-	for i = 1, MAX_ROWS do
-		window.rows[i]:Hide()
+local function PaintSpell(window, row, spell, index, maxAmount, total, mode, db)
+	row:Show()
+	row._soulIndex = index
+	row._soulTip = nil
+	row.Self:Hide()
+	row.SelfTint:Hide()
+	local color = window._breakdownColor
+	if color and db.classColors ~= false then
+		row.Bar:SetStatusBarColor(color.r, color.g, color.b, db.barAlpha or 1)
+	else
+		local r, g, b = Soul:Accent()
+		row.Bar:SetStatusBarColor(r, g, b, db.barAlpha or 1)
+	end
+	SetRank(row, db, index)
+	local spellID = spell.spellID
+	local plainID = not IsSecret(spellID) and type(spellID) == "number"
+	local spellName
+	if plainID and C_Spell and C_Spell.GetSpellName then
+		spellName = C_Spell.GetSpellName(spellID)
+	end
+	row.Name:SetText(spellName or "")
+	local share = db.valueFormat == "percent" and Share(spell.totalAmount, total) or nil
+	ValueText(row, mode, spell.totalAmount, spell.amountPerSecond, share, db.valueFormat)
+	local instant = Retarget(row, window._paintKey + index)
+	if Present(maxAmount) then
+		row.Bar:SetMinMaxValues(0, maxAmount)
+		SetBar(row, spell.totalAmount, instant)
+	end
+	local texture
+	if plainID and C_Spell and C_Spell.GetSpellTexture then
+		texture = C_Spell.GetSpellTexture(spellID)
+	end
+	if db.showIcons ~= false and Present(texture) then
+		row.Icon:SetTexture(texture)
+		row.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+		row.Icon:Show()
+	else
+		row.Icon:Hide()
 	end
 end
+
+------------------------------------------------------------------------------
+-- Scrolling (mouse wheel; eased through the core ticker while it moves)
+------------------------------------------------------------------------------
+
+local driver -- Soul.Ticker driver, created in OnEnable
+
+local function Stride(window)
+	return window._stride or 19
+end
+
+-- Puts the row strip at a pixel offset and works out which entry is on top.
+-- Returns true when the set of entries on screen changed (needs a repaint).
+local function PlaceScroll(window, pos)
+	local stride = Stride(window)
+	window._scrollPos = pos
+	local first = math_floor(pos / stride + 0.0001) + 1
+	local pixel = pos - (first - 1) * stride
+	if pixel < 0.01 then pixel = 0 end
+	window.Content:ClearAllPoints()
+	window.Content:SetPoint("TOPLEFT", window.Body, "TOPLEFT", 0, pixel)
+	window.Content:SetPoint("TOPRIGHT", window.Body, "TOPRIGHT", 0, pixel)
+	local partial = pixel > 0
+	local changed = first ~= window._first or partial ~= window._partial
+	window._first = first
+	window._partial = partial
+	-- Scroll thumb
+	local count, visible = window._count or 0, window._visible or 1
+	if count > visible then
+		local bodyH = visible * stride - (window._gap or 0)
+		local thumbH = math_max(8, bodyH * visible / count)
+		local maxScroll = (count - visible) * stride
+		local y = maxScroll > 0 and (bodyH - thumbH) * pos / maxScroll or 0
+		window.Thumb:SetHeight(thumbH)
+		window.Thumb:ClearAllPoints()
+		window.Thumb:SetPoint("TOPRIGHT", window.Body, "TOPRIGHT", 0, -y)
+		window.Thumb:Show()
+	else
+		window.Thumb:Hide()
+	end
+	return changed
+end
+
+local function MaxScroll(window)
+	local over = (window._count or 0) - (window._visible or 0)
+	if over < 0 then over = 0 end
+	return over * Stride(window)
+end
+
+local function StopScrollAnim(window)
+	if driver and window._animating then
+		driver:Remove(window._animKey)
+	end
+	window._animating = false
+end
+
+local function ResetScroll(window)
+	StopScrollAnim(window)
+	window._scrollTarget = 0
+	PlaceScroll(window, 0)
+end
+
+-- Clamp after the entry count changes; no animation.
+local function ClampScroll(window)
+	local maxScroll = MaxScroll(window)
+	local target = window._scrollTarget or 0
+	if target > maxScroll then target = maxScroll end
+	window._scrollTarget = target
+	local pos = window._scrollPos or 0
+	if pos > maxScroll then
+		StopScrollAnim(window)
+		pos = maxScroll
+	end
+	PlaceScroll(window, pos)
+	local wheel = (window._count or 0) > (window._visible or 0) and DB().scrollWheel ~= false
+	if wheel ~= window._wheel then
+		window._wheel = wheel
+		window.Body:EnableMouseWheel(wheel)
+	end
+end
+
+local function ScrollBy(window, delta)
+	local stride = Stride(window)
+	local maxScroll = MaxScroll(window)
+	local target = (window._scrollTarget or 0) - delta * stride
+	target = math_floor(target / stride + 0.5) * stride
+	if target < 0 then target = 0 end
+	if target > maxScroll then target = maxScroll end
+	window._scrollTarget = target
+	if DB().smoothScroll == false or not driver then
+		if PlaceScroll(window, target) then DM:PaintWindow(window._index) end
+		return
+	end
+	window._animTime = GetTime()
+	if not window._animating then
+		window._animating = true
+		driver:Add(window._animKey, window._animStep)
+	end
+end
+
+------------------------------------------------------------------------------
+-- Painting
+------------------------------------------------------------------------------
 
 local function FetchSession(cfg)
 	if not C_DamageMeter or not C_DamageMeter.GetCombatSessionFromType then return nil end
@@ -251,94 +558,171 @@ local function FetchSession(cfg)
 	return session, meter, segment
 end
 
-local function PaintSources(window, cfg)
+-- Re-anchors the row text for a value mode. Runs only when the mode changes.
+-- In "columns" the trailing column (per second, share) reads a step dimmer.
+local function EnsureMode(window, mode)
+	if window._mode == mode then return end
+	window._mode = mode
+	local columns = mode == "columns"
+	local valueW = columns and window._columnWidth or 0
+	local rank = DB().showRank and true or false
+	for n = 1, POOL do
+		local row = window.rows[n]
+		row.Value:SetWidth(valueW)
+		row.Value2:SetShown(columns)
+		row.Name:ClearAllPoints()
+		if rank then
+			row.Name:SetPoint("LEFT", row.Rank, "RIGHT", 5, 0)
+		else
+			row.Name:SetPoint("LEFT", row.Bar, "LEFT", 6, 0)
+		end
+		row.Name:SetPoint("RIGHT", columns and row.Value2 or row.Value, "LEFT", -6, 0)
+		if columns then
+			local a = row._soulSideDim or 0.62
+			row.Value:SetTextColor(a, a, a + 0.03, 1)
+		else
+			row.Value:SetTextColor(1, 1, 1, 1)
+			row.Value2:SetText("")
+		end
+	end
+end
+
+local function ShowEmpty(window, text)
+	if text and DB().emptyText ~= false then
+		window.Empty:SetText(text)
+		window.Empty:Show()
+	else
+		window.Empty:Hide()
+	end
+end
+
+local function HideRowsFrom(window, from)
+	for n = from, POOL do
+		window.rows[n]:Hide()
+	end
+end
+
+local function PaintHeader(window, cfg)
+	local info = TypeInfo(cfg.type)
+	window.Title:SetText(info.label)
+	local inBreakdown = window._breakdown and true or false
+	if inBreakdown then
+		window.Segment:SetText(window._breakdownName or "Spells")
+	else
+		window.Segment:SetText(SegmentInfo(cfg.segment).label)
+	end
+	if window._titleShifted ~= inBreakdown then
+		window._titleShifted = inBreakdown
+		window.Back:SetShown(inBreakdown)
+		window.Title:ClearAllPoints()
+		window.Title:SetPoint("BOTTOMLEFT", window.Header, "BOTTOMLEFT",
+			inBreakdown and (window._titleBackX or 20) or (window._titleX or 8), window._baseY or 4)
+	end
+end
+
+local function PaintSources(window, cfg, db)
 	local session = FetchSession(cfg)
-	if window.Sync then window.Sync(window, cfg) end
-	if not session or not Readable(session.combatSources) then
-		HideRows(window)
+	local sources = session and session.combatSources
+	if not Readable(sources) then
+		window._count = 0
+		ClampScroll(window)
+		HideRowsFrom(window, 1)
+		ShowEmpty(window, C_DamageMeter and "No combat data yet" or "Combat meter unavailable")
 		return
 	end
-	local sources = session.combatSources
-	local deaths = cfg.type == "deaths"
-	local limit = cfg and DB().rows or 12
-	if limit > MAX_ROWS then limit = MAX_ROWS end
-	local maxAmount = session.maxAmount
-	local top = sources[1]
-	if not Soul.Secret.Present(maxAmount) and top and not Soul.Secret.IsSecret(top) and not (issecrettable and issecrettable(top)) then
-		maxAmount = top.totalAmount
+	local count = #sources
+	if count > MAX_DATA then count = MAX_DATA end
+	window._count = count
+	ClampScroll(window)
+	if count == 0 then
+		HideRowsFrom(window, 1)
+		ShowEmpty(window, cfg.segment == "overall" and "No combat data yet" or "Waiting for combat")
+		return
 	end
-	for i = 1, MAX_ROWS do
-		local row = window.rows[i]
-		local src = sources[i]
-		if i <= limit and Soul.Secret.Present(src) and not Soul.Secret.IsSecret(src) then
-			row._soulIndex = i
-			row._soulSessionTotal = session.totalAmount
-			PaintRow(row, src, maxAmount, deaths)
+	ShowEmpty(window, nil)
+	local mode = ValueMode(window, cfg, db)
+	EnsureMode(window, mode)
+	local maxAmount = session.maxAmount
+	if not Present(maxAmount) then
+		local top = Entry(sources, 1)
+		maxAmount = top and top.totalAmount
+	end
+	local sessionTotal = session.totalAmount
+	local first = window._first or 1
+	local slots = window._visible + (window._partial and 1 or 0)
+	for n = 1, POOL do
+		local row = window.rows[n]
+		local index = first + n - 1
+		local src = n <= slots and index <= count and Entry(sources, index) or nil
+		if src then
+			PaintSource(window, row, src, index, maxAmount, sessionTotal, mode, db)
 		else
 			row:Hide()
 		end
 	end
 end
 
-local function PaintSpells(window, cfg)
+local function PaintSpells(window, cfg, db)
 	local session, meter, segment = FetchSession(cfg)
-	if window.Sync then window.Sync(window, cfg) end
-	HideRows(window)
-	if not session or InCombatLockdown() then
-		window._breakdown = nil
-		PaintSources(window, cfg)
-		return
+	if not session or InCombatLockdown() or not Readable(session.combatSources) then
+		return false
 	end
-	local src = session.combatSources and session.combatSources[window._breakdown]
-	if not src or Soul.Secret.IsSecret(src) or (issecrettable and issecrettable(src)) or Soul.Secret.IsSecret(src.sourceGUID) then
-		window._breakdown = nil
-		PaintSources(window, cfg)
-		return
-	end
+	local src = Entry(session.combatSources, window._breakdown)
+	if not src or IsSecret(src.sourceGUID) then return false end
 	local creature = src.sourceCreatureID
-	if Soul.Secret.IsSecret(creature) then creature = nil end
+	if IsSecret(creature) then creature = nil end
 	local ok, detail = pcall(C_DamageMeter.GetCombatSessionSourceFromType, segment, meter, src.sourceGUID, creature)
-	if not ok or not Readable(detail) or not Readable(detail.combatSpells) then
-		window.rows[1]:Show()
-		window.rows[1].Name:SetText(src.name or "")
-		window.rows[1].Value:SetText("")
-		return
+	local spells = ok and Readable(detail) and detail.combatSpells
+	if not Readable(spells) then
+		window._count = 0
+		ClampScroll(window)
+		HideRowsFrom(window, 1)
+		ShowEmpty(window, "No spell data")
+		return true
 	end
-	local spells = detail.combatSpells
+	local count = #spells
+	if count > MAX_DATA then count = MAX_DATA end
+	window._count = count
+	ClampScroll(window)
+	ShowEmpty(window, count == 0 and "No spell data" or nil)
+	local mode = ValueMode(window, cfg, db)
+	EnsureMode(window, mode)
 	local maxAmount = detail.maxAmount
-	for i = 1, MAX_SPELLS do
-		local spell = spells[i]
-		local row = window.rows[i]
-		if not Soul.Secret.Present(spell) or Soul.Secret.IsSecret(spell) or (issecrettable and issecrettable(spell)) then
-			row:Hide()
+	if not Present(maxAmount) then
+		local top = Entry(spells, 1)
+		maxAmount = top and top.totalAmount
+	end
+	local total = detail.totalAmount
+	local first = window._first or 1
+	local slots = window._visible + (window._partial and 1 or 0)
+	for n = 1, POOL do
+		local row = window.rows[n]
+		local index = first + n - 1
+		local spell = n <= slots and index <= count and Entry(spells, index) or nil
+		if spell then
+			PaintSpell(window, row, spell, index, maxAmount, total, mode, db)
 		else
-			row:Show()
-			row.Icon:Hide()
-			row.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-			row._soulTip = nil
-			row.Mark:Hide()
-			local spellName
-			if C_Spell and C_Spell.GetSpellName and not Soul.Secret.IsSecret(spell.spellID) then
-				spellName = C_Spell.GetSpellName(spell.spellID)
-			end
-			row.Name:SetText(spellName or "")
-			row.Value:SetFormattedText("%s", Soul:Abbrev(spell.totalAmount))
-			local r, g, b = Soul:Accent()
-			row.Bar:SetStatusBarColor(r, g, b)
-			if Soul.Secret.Present(maxAmount) then
-				row.Bar:SetMinMaxValues(0, maxAmount)
-				Ease(row.Bar, spell.totalAmount)
-			end
-			if row.Rank then row.Rank:SetText("") end
-			if C_Spell and C_Spell.GetSpellTexture and not Soul.Secret.IsSecret(spell.spellID) and type(spell.spellID) == "number" then
-				local texture = C_Spell.GetSpellTexture(spell.spellID)
-				if Soul.Secret.Present(texture) then
-					row.Icon:SetTexture(texture)
-					row.Icon:Show()
-				end
-			end
+			row:Hide()
 		end
 	end
+	return true
+end
+
+local function PaintInner(window, cfg)
+	local db = DB()
+	window._isDeaths = cfg.type == "deaths"
+	if window._breakdown then
+		if not PaintSpells(window, cfg, db) then
+			window._breakdown = nil
+			window._paintKey = (window._paintKey or 0) + 1000
+			ResetScroll(window)
+		else
+			PaintHeader(window, cfg)
+			return
+		end
+	end
+	PaintHeader(window, cfg)
+	PaintSources(window, cfg, db)
 end
 
 function DM:PaintWindow(index)
@@ -346,17 +730,12 @@ function DM:PaintWindow(index)
 	if not window then return end
 	local cfg = DB().windows[index]
 	if not DB().enabled or not cfg or not cfg.enabled then
+		StopScrollAnim(window)
 		window:Hide()
 		return
 	end
 	window:Show()
-	local ok, err = pcall(function()
-		if window._breakdown then
-			PaintSpells(window, cfg)
-		else
-			PaintSources(window, cfg)
-		end
-	end)
+	local ok, err = pcall(PaintInner, window, cfg)
 	if not ok and not window._soulReported then
 		window._soulReported = true
 		Soul:Print("Damage meter paint failed:", err)
@@ -370,6 +749,20 @@ function DM:RefreshAll()
 	end
 	self:UpdateClocks()
 end
+
+-- A new view (mode, segment, breakdown): back to the top, bars snap.
+function DM:NewView(index)
+	local window = self.windows and self.windows[index]
+	if not window then return end
+	window._paintKey = (window._paintKey or 0) + 1000
+	ResetScroll(window)
+	self:PaintWindow(index)
+	self:UpdateClocks()
+end
+
+------------------------------------------------------------------------------
+-- Combat tickers
+------------------------------------------------------------------------------
 
 function DM:StopTicker(gen)
 	if gen and gen ~= self._gen then return end
@@ -417,7 +810,14 @@ function DM:BeginCombat()
 	self._inCombat = true
 	self._pinned = nil
 	for i = 1, WINDOWS do
-		if self.windows[i] then self.windows[i]._breakdown = nil end
+		local window = self.windows[i]
+		if window then
+			if window._breakdown then
+				window._breakdown = nil
+				window._paintKey = (window._paintKey or 0) + 1000
+			end
+			ResetScroll(window)
+		end
 	end
 	self:StartTicker()
 	self:RefreshAll()
@@ -430,73 +830,136 @@ local function RestoreCVar()
 	end
 end
 
--- Window look (own design, after the EllesmereUI meter's proportions): a solid
--- dark header with the meter name in the accent color, the segment and fight
--- clock dimmed beside it, and small icon buttons on the right; rows are a spec
--- icon plus a class-colored bar with name left and value right on a dark,
--- mostly opaque body.
-local HEADER_ICONS = {
-	segment = "Interface\\Buttons\\UI-GuildButton-PublicNote-Up",
-	reset = "Interface\\Buttons\\UI-RefreshButton",
-	close = "Interface\\Buttons\\UI-StopButton",
+------------------------------------------------------------------------------
+-- Look
+--
+-- Own design: a solid header with the meter name in the accent color, a small
+-- dot and the segment dimmed beside it, the fight clock right-aligned and
+-- drawn line icons at the right edge, all sitting on one baseline; a fading
+-- accent hairline under it. Rows are a square spec icon plus a class-colored
+-- bar on a faint track, with a soft top sheen, a fixed rank column, the name
+-- left and the numbers in right-aligned columns. Your own row gets a thin
+-- accent edge and a faint lift. Rows clip inside the body and glide when the
+-- list is longer than the window.
+------------------------------------------------------------------------------
+
+local GLYPHS = {
+	close = { { -0.3, 0.3, 0.3, -0.3 }, { -0.3, -0.3, 0.3, 0.3 } },
+	-- two opposed arrows: switch Current / Overall
+	swap = {
+		{ -0.34, 0.15, 0.34, 0.15 }, { 0.34, 0.15, 0.13, 0.36 },
+		{ 0.34, -0.15, -0.34, -0.15 }, { -0.34, -0.15, -0.13, -0.36 },
+	},
+	-- bin: reset meter data
+	reset = {
+		{ -0.34, 0.22, 0.34, 0.22 },
+		{ -0.11, 0.22, -0.11, 0.34 }, { -0.11, 0.34, 0.11, 0.34 }, { 0.11, 0.34, 0.11, 0.22 },
+		{ -0.25, 0.22, -0.19, -0.34 }, { -0.19, -0.34, 0.19, -0.34 }, { 0.19, -0.34, 0.25, 0.22 },
+	},
+	back = { { 0.12, 0.3, -0.16, 0 }, { -0.16, 0, 0.12, -0.3 } },
 }
 
-local function Geometry()
-	local db = DB()
+local ICON_IDLE = { 0.62, 0.64, 0.67 }
+
+local function Glyph(parent, kind)
+	local frame = CreateFrame("Frame", nil, parent)
+	frame:EnableMouse(false)
+	frame.lines = {}
+	frame.spec = GLYPHS[kind] or GLYPHS.close
+	for i = 1, #frame.spec do
+		frame.lines[i] = frame:CreateLine(nil, "OVERLAY")
+	end
+	function frame:Layout(size, thickness)
+		self:SetSize(size, size)
+		for i = 1, #self.lines do
+			local seg, line = self.spec[i], self.lines[i]
+			line:SetThickness(thickness)
+			line:SetStartPoint("CENTER", self, seg[1] * size, seg[2] * size)
+			line:SetEndPoint("CENTER", self, seg[3] * size, seg[4] * size)
+		end
+	end
+	function frame:SetColor(r, g, b, a)
+		for i = 1, #self.lines do self.lines[i]:SetColorTexture(r, g, b, a or 1) end
+	end
+	frame:Layout(12, 1.5)
+	frame:SetColor(ICON_IDLE[1], ICON_IDLE[2], ICON_IDLE[3])
+	return frame
+end
+
+local function TextStyle(fs, size, db)
+	local style = db.textStyle or "shadow"
+	if style == "outline" then
+		Soul:ApplyFont(fs, size, "OUTLINE")
+		fs:SetShadowOffset(0, 0)
+	else
+		Soul:ApplyFont(fs, size, "NONE")
+		if style == "none" then
+			fs:SetShadowOffset(0, 0)
+		else
+			fs:SetShadowColor(0, 0, 0, 0.9)
+			fs:SetShadowOffset(1, -1)
+		end
+	end
+end
+
+local function Geometry(db)
 	local rowHeight = Soul.Pixel:Scale(db.rowHeight or 18)
 	local gap = Soul.Pixel:Scale(db.rowGap or 1)
 	local rows = db.rows or 8
 	if rows > MAX_ROWS then rows = MAX_ROWS end
+	if rows < 1 then rows = 1 end
 	local headerH = Soul.Pixel:Scale(db.headerHeight or 22)
 	return rowHeight, gap, rows, headerH
 end
 
-local function StyleRow(row, rowHeight, db)
-	local fontSize = db.fontSize or 0
-	if fontSize <= 0 then fontSize = math.max(9, math.floor(rowHeight * 0.62 + 0.5)) end
-	local iconOn = db.showIcons ~= false
+local function MeasureWidth(fs, text)
+	fs:SetText(text)
+	local w = fs:GetStringWidth() or 0
+	fs:SetText("")
+	return math_ceil(w) + 1
+end
+
+local function StyleRow(window, row, n, rowHeight, stride, fontSize, db)
+	row:ClearAllPoints()
+	local y = -(n - 1) * stride
+	row:SetPoint("TOPLEFT", window.Content, "TOPLEFT", 0, y)
+	row:SetPoint("TOPRIGHT", window.Content, "TOPRIGHT", 0, y)
+	row:SetHeight(rowHeight)
 	row.Icon:SetSize(rowHeight, rowHeight)
 	row.Icon:ClearAllPoints()
 	row.Icon:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
 	row.Bar:ClearAllPoints()
-	if iconOn then
+	if db.showIcons ~= false then
 		row.Bar:SetPoint("TOPLEFT", row.Icon, "TOPRIGHT", Soul.Pixel:Scale(1), 0)
 	else
 		row.Bar:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
 	end
 	row.Bar:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
 	row.Bar:SetStatusBarTexture(db.texture and Soul:Media("statusbar", db.texture) or Soul:StatusbarTexture())
-	local bg = db.rowBackground or { 0, 0, 0, 0.35 }
-	if row.Bar.bg then row.Bar.bg:SetColorTexture(bg[1], bg[2], bg[3], bg[4] or 0.35) end
-	Soul:ApplyFont(row.Name, fontSize, "OUTLINE")
-	Soul:ApplyFont(row.Value, fontSize, "OUTLINE")
-	Soul:ApplyFont(row.Rank, fontSize, "OUTLINE")
+	local bg = db.rowBackground or { 1, 1, 1, 0.04 }
+	row.Bar.bg:SetColorTexture(bg[1], bg[2], bg[3], bg[4] or 0.04)
+	local fill = row.Bar:GetStatusBarTexture()
+	row.Sheen:ClearAllPoints()
+	row.Sheen:SetPoint("TOPLEFT", fill, "TOPLEFT")
+	row.Sheen:SetPoint("BOTTOMRIGHT", fill, "RIGHT")
+	row.Sheen:SetShown(db.barSheen ~= false)
+	TextStyle(row.Name, fontSize, db)
+	TextStyle(row.Value, fontSize, db)
+	TextStyle(row.Value2, fontSize, db)
+	TextStyle(row.Rank, math_max(8, fontSize - 1), db)
 	row.Rank:ClearAllPoints()
 	row.Rank:SetPoint("LEFT", row.Bar, "LEFT", 4, 0)
-	row.Name:ClearAllPoints()
-	if db.showRank then
-		row.Name:SetPoint("LEFT", row.Rank, "RIGHT", 2, 0)
-	else
-		row.Name:SetPoint("LEFT", row.Bar, "LEFT", 5, 0)
-	end
-	row.Name:SetPoint("RIGHT", row.Value, "LEFT", -6, 0)
-end
-
-local function PaintHeader(window, cfg)
-	local db = DB()
-	local r, g, b = Soul:Accent()
-	local info = TypeInfo(cfg.type)
-	if window._breakdown then
-		window.Title:SetText("< " .. info.label)
-	else
-		window.Title:SetText(info.label)
-	end
-	if db.headerAccent == false then
-		window.Title:SetTextColor(1, 1, 1)
-	else
-		window.Title:SetTextColor(r, g, b)
-	end
-	window.Segment:SetText(SegmentInfo(cfg.segment).label)
+	row.Rank:SetWidth(window._rankWidth or 14)
+	row.Value:ClearAllPoints()
+	row.Value:SetPoint("RIGHT", row.Bar, "RIGHT", -6, 0)
+	row.Value2:ClearAllPoints()
+	row.Value2:SetPoint("RIGHT", row.Value, "LEFT", -4, 0)
+	local dim = db.secondaryAlpha or 0.62
+	row.Value:SetTextColor(1, 1, 1, 1)
+	row.Value2:SetTextColor(1, 1, 1, 1)
+	row._soulSideDim = dim
+	row.Self:SetWidth(Soul.Pixel:Scale(2))
+	row._soulKey = nil
 end
 
 function DM:Apply()
@@ -506,6 +969,7 @@ function DM:Apply()
 		self:StopTicker()
 		if self.windows then
 			for i = 1, WINDOWS do
+				StopScrollAnim(self.windows[i])
 				self.windows[i]:Hide()
 			end
 		end
@@ -514,35 +978,102 @@ function DM:Apply()
 	end
 	Soul:SetOwnedCVar("damageMeterEnabled", "0", "DamageMeters")
 	local width = Soul.Pixel:Scale(db.width or 260)
-	local rowHeight, gap, rows, headerH = Geometry()
+	local rowHeight, gap, rows, headerH = Geometry(db)
 	local stride = rowHeight + gap
 	local headerColor = db.headerColor or { 0.106, 0.106, 0.106, 1 }
 	local headerFont = db.headerFontSize or 0
-	if headerFont <= 0 then headerFont = math.max(10, math.floor(headerH * 0.52 + 0.5)) end
+	if headerFont <= 0 then headerFont = math_max(10, math_floor(headerH * 0.52 + 0.5)) end
+	local fontSize = db.fontSize or 0
+	if fontSize <= 0 then fontSize = math_max(9, math_floor(rowHeight * 0.6 + 0.5)) end
 	local r, g, b = Soul:Accent()
+	local lineFrom = CreateColor and CreateColor(r, g, b, 0.9)
+	local lineTo = CreateColor and CreateColor(r, g, b, 0.05)
+	local pad = Soul.Pixel:Scale(8)
 	for i = 1, WINDOWS do
 		local window = self.windows[i]
 		local cfg = db.windows[i]
+		StopScrollAnim(window)
+		window._stride = stride
+		window._gap = gap
+		window._visible = rows
 		window:SetWidth(width)
 		window:SetHeight(headerH + gap + rows * stride - gap)
+
+		-- Header
 		window.Header:SetHeight(headerH)
 		window.HeaderBg:SetColorTexture(headerColor[1], headerColor[2], headerColor[3], headerColor[4] or 1)
-		window.HeaderLine:SetColorTexture(r, g, b, db.headerLine == false and 0 or 0.9)
-		Soul:ApplyFont(window.Title, headerFont, "OUTLINE")
-		Soul:ApplyFont(window.Segment, math.max(9, headerFont - 2), "OUTLINE")
-		Soul:ApplyFont(window.Clock, math.max(9, headerFont - 1), "OUTLINE")
-		local iconSize = math.max(10, headerH - 8)
-		for _, button in pairs(window.Buttons) do button:SetSize(iconSize, iconSize) end
-		for n = 1, MAX_ROWS do
-			local row = window.rows[n]
-			local y = -headerH - gap - (n - 1) * stride
-			row:ClearAllPoints()
-			row:SetPoint("TOPLEFT", window, "TOPLEFT", 0, y)
-			row:SetPoint("TOPRIGHT", window, "TOPRIGHT", 0, y)
-			row:SetHeight(rowHeight)
-			StyleRow(row, rowHeight, db)
-			row.Mark:SetColorTexture(r, g, b, 1)
+		local lineAlpha = db.headerLine == false and 0 or 1
+		window.HeaderLine:SetHeight(Soul.Pixel:Scale(1))
+		window.HeaderLine:SetAlpha(lineAlpha)
+		window.HeaderLine:SetTexture(WHITE)
+		if not (lineFrom and pcall(window.HeaderLine.SetGradient, window.HeaderLine, "HORIZONTAL", lineFrom, lineTo)) then
+			window.HeaderLine:SetColorTexture(r, g, b, 0.9)
 		end
+		TextStyle(window.Title, headerFont, db)
+		TextStyle(window.Segment, math_max(9, headerFont - 2), db)
+		TextStyle(window.Clock, math_max(9, headerFont - 1), db)
+		if db.headerAccent == false then
+			window.Title:SetTextColor(1, 1, 1)
+		else
+			window.Title:SetTextColor(r, g, b)
+		end
+		window.Title:SetText("Damage Done")
+		local titleH = window.Title:GetStringHeight() or headerFont
+		local baseY = math_floor((headerH - titleH) / 2 + 0.5)
+		if baseY < 0 then baseY = 0 end
+		local midY = baseY + titleH / 2
+		local iconSize = math_max(12, math_floor(headerH * 0.72 + 0.5))
+		local glyphSize = math_max(8, math_floor(headerH * 0.4 + 0.5))
+		local thickness = headerH >= 26 and 2 or 1.5
+		local x = -pad + Soul.Pixel:Scale(3)
+		local order = window.ButtonOrder
+		for n = 1, #order do
+			local button = order[n]
+			button:SetSize(iconSize, iconSize)
+			button.Glyph:Layout(glyphSize, thickness)
+			button:ClearAllPoints()
+			button:SetPoint("RIGHT", window.Header, "BOTTOMRIGHT", x, midY)
+			x = x - iconSize
+		end
+		window.Back:Layout(math_max(7, glyphSize - 2), thickness)
+		window.Back:ClearAllPoints()
+		window.Back:SetPoint("CENTER", window.Header, "BOTTOMLEFT", pad + glyphSize / 2 - 2, midY)
+		window._titleX = pad
+		window._titleBackX = pad + glyphSize + 2
+		window._baseY = baseY
+		window._titleShifted = nil -- PaintHeader anchors the title
+		window.Dot:SetSize(Soul.Pixel:Scale(3), Soul.Pixel:Scale(3))
+		window.Dot:ClearAllPoints()
+		window.Dot:SetPoint("LEFT", window.Title, "RIGHT", Soul.Pixel:Scale(6), 0)
+		window.Segment:ClearAllPoints()
+		window.Segment:SetPoint("BOTTOMLEFT", window.Title, "BOTTOMRIGHT", Soul.Pixel:Scale(15), 0)
+		window.Clock:ClearAllPoints()
+		window.Clock:SetPoint("BOTTOMRIGHT", window.Header, "BOTTOMRIGHT", x - Soul.Pixel:Scale(4), baseY)
+
+		-- Body
+		window.Body:ClearAllPoints()
+		window.Body:SetPoint("TOPLEFT", window, "TOPLEFT", 0, -headerH - gap)
+		window.Body:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", 0, 0)
+		window.Content:SetHeight(POOL * stride)
+		TextStyle(window.Empty, fontSize, db)
+		window.Thumb:SetWidth(Soul.Pixel:Scale(2))
+		window.Thumb:SetColorTexture(1, 1, 1, 0.22)
+
+		-- Column widths from the font in use (all rows share it).
+		local probe = window.rows[1]
+		TextStyle(probe.Rank, math_max(8, fontSize - 1), db)
+		TextStyle(probe.Value, fontSize, db)
+		window._rankWidth = MeasureWidth(probe.Rank, "20")
+		local format = db.valueFormat or "both"
+		window._columnWidth = MeasureWidth(probe.Value, format == "percent" and "100%" or "(888.8K)")
+		window._mode = nil
+		for n = 1, POOL do
+			local row = window.rows[n]
+			StyleRow(window, row, n, rowHeight, stride, fontSize, db)
+			row.Self:SetColorTexture(r, g, b, 1)
+			row.Rank:SetShown(db.showRank and true or false)
+		end
+
 		Soul:Place(window, "DamageMeters:" .. i, {
 			point = "CENTER", relPoint = "CENTER", x = cfg.x, y = cfg.y,
 		})
@@ -555,6 +1086,9 @@ function DM:Apply()
 		end
 		Soul:ShowBorder(window, db.border and true or false, 1)
 		window.ButtonsShown(db.headerIconsOnHover ~= true)
+		window._wheel = nil
+		window._scrollTarget = 0
+		PlaceScroll(window, 0)
 		PaintHeader(window, cfg)
 	end
 	self:RefreshAll()
@@ -572,30 +1106,54 @@ local function MakeRow(parent)
 	row.Icon = icon
 	local bar = Soul:StatusBar(row)
 	row.Bar = bar
-	local rank = bar:CreateFontString(nil, "OVERLAY")
-	rank:SetJustifyH("LEFT")
-	rank:SetTextColor(0.85, 0.85, 0.88)
+	local sheen = bar:CreateTexture(nil, "ARTWORK", nil, 2)
+	sheen:SetTexture(WHITE)
+	if CreateColor then
+		if not pcall(sheen.SetGradient, sheen, "VERTICAL", CreateColor(1, 1, 1, 0), CreateColor(1, 1, 1, 0.12)) then
+			sheen:SetColorTexture(1, 1, 1, 0.06)
+		end
+	else
+		sheen:SetColorTexture(1, 1, 1, 0.06)
+	end
+	row.Sheen = sheen
+	local tint = bar:CreateTexture(nil, "ARTWORK", nil, 3)
+	tint:SetAllPoints(bar)
+	tint:SetColorTexture(1, 1, 1, 0.05)
+	tint:Hide()
+	row.SelfTint = tint
+	local text = CreateFrame("Frame", nil, bar)
+	text:SetAllPoints(bar)
+	text:SetFrameLevel(bar:GetFrameLevel() + 2)
+	local rank = text:CreateFontString(nil, "OVERLAY")
+	rank:SetJustifyH("RIGHT")
+	rank:SetTextColor(0.78, 0.79, 0.82)
 	rank:Hide()
 	row.Rank = rank
-	local name = bar:CreateFontString(nil, "OVERLAY")
+	local name = text:CreateFontString(nil, "OVERLAY")
 	name:SetJustifyH("LEFT")
 	name:SetWordWrap(false)
 	name:SetTextColor(1, 1, 1)
 	row.Name = name
-	local value = bar:CreateFontString(nil, "OVERLAY")
-	value:SetPoint("RIGHT", bar, "RIGHT", -5, 0)
+	local value = text:CreateFontString(nil, "OVERLAY")
 	value:SetJustifyH("RIGHT")
+	value:SetWordWrap(false)
 	value:SetTextColor(1, 1, 1)
 	row.Value = value
-	local mark = bar:CreateTexture(nil, "OVERLAY", nil, 7)
-	mark:SetPoint("TOPRIGHT")
-	mark:SetPoint("BOTTOMRIGHT")
+	local value2 = text:CreateFontString(nil, "OVERLAY")
+	value2:SetJustifyH("RIGHT")
+	value2:SetWordWrap(false)
+	value2:SetTextColor(1, 1, 1)
+	value2:Hide()
+	row.Value2 = value2
+	local mark = text:CreateTexture(nil, "OVERLAY", nil, 7)
+	mark:SetPoint("TOPLEFT", bar, "TOPLEFT")
+	mark:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT")
 	mark:SetWidth(2)
 	mark:Hide()
-	row.Mark = mark
-	local hover = bar:CreateTexture(nil, "OVERLAY", nil, 6)
+	row.Self = mark
+	local hover = text:CreateTexture(nil, "BACKGROUND")
 	hover:SetAllPoints(row)
-	hover:SetColorTexture(1, 1, 1, 0.08)
+	hover:SetColorTexture(1, 1, 1, 0.07)
 	hover:Hide()
 	row:SetScript("OnEnter", function(self)
 		hover:Show()
@@ -604,8 +1162,8 @@ local function MakeRow(parent)
 		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
 		pcall(function()
 			GameTooltip:AddLine(self.Name:GetText() or "", 1, 1, 1)
-			GameTooltip:AddDoubleLine("Total", Soul:Abbrev(src.totalAmount), 0.7, 0.7, 0.75, 1, 1, 1)
-			GameTooltip:AddDoubleLine("Per second", Soul:Abbrev(src.amountPerSecond), 0.7, 0.7, 0.75, 1, 1, 1)
+			GameTooltip:AddDoubleLine("Total", Abbrev(src.totalAmount), 0.7, 0.7, 0.75, 1, 1, 1)
+			GameTooltip:AddDoubleLine("Per second", Abbrev(src.amountPerSecond), 0.7, 0.7, 0.75, 1, 1, 1)
 			GameTooltip:AddLine("Click for spells", 0.5, 0.5, 0.55)
 		end)
 		GameTooltip:Show()
@@ -617,23 +1175,20 @@ local function MakeRow(parent)
 	return row
 end
 
-local function IconButton(parent, texture, tip)
+local function HeaderButton(parent, kind, tip)
 	local button = CreateFrame("Button", nil, parent)
-	button:SetSize(14, 14)
-	local art = button:CreateTexture(nil, "ARTWORK")
-	art:SetAllPoints()
-	art:SetTexture(texture)
-	art:SetDesaturated(true)
-	art:SetVertexColor(0.75, 0.75, 0.8)
-	button.Art = art
+	button:SetSize(16, 16)
+	local glyph = Glyph(button, kind)
+	glyph:SetPoint("CENTER")
+	button.Glyph = glyph
 	button:SetScript("OnEnter", function(self)
-		art:SetVertexColor(1, 1, 1)
+		glyph:SetColor(1, 1, 1)
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
 		GameTooltip:AddLine(tip, 1, 1, 1)
 		GameTooltip:Show()
 	end)
 	button:SetScript("OnLeave", function()
-		art:SetVertexColor(0.75, 0.75, 0.8)
+		glyph:SetColor(ICON_IDLE[1], ICON_IDLE[2], ICON_IDLE[3])
 		GameTooltip:Hide()
 	end)
 	return button
@@ -644,15 +1199,20 @@ local function MenuItems(list)
 	for i = 1, #list do items[i] = { value = list[i].key, label = list[i].label } end
 	return items
 end
+local TYPE_ITEMS = MenuItems(TYPES)
+local SEGMENT_ITEMS = MenuItems(SEGMENTS)
 
 local function MakeWindow(index)
 	local window = CreateFrame("Frame", "SoulUIMeter" .. index, UIParent)
+	window._index = index
+	window._animKey = "meter" .. index
 	window:SetClampedToScreen(true)
 	Soul:Round(window)
 	local bg = window:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
 	bg:SetColorTexture(0, 0, 0, 0.75)
 	window.bg = bg
+
 	local header = CreateFrame("Button", nil, window)
 	header:SetPoint("TOPLEFT")
 	header:SetPoint("TOPRIGHT")
@@ -665,30 +1225,34 @@ local function MakeWindow(index)
 	local line = header:CreateTexture(nil, "ARTWORK")
 	line:SetPoint("BOTTOMLEFT")
 	line:SetPoint("BOTTOMRIGHT")
-	line:SetHeight(Soul.Pixel:Scale(1))
+	line:SetHeight(1)
 	window.HeaderLine = line
 
+	local back = Glyph(header, "back")
+	back:Hide()
+	window.Back = back
 	local title = header:CreateFontString(nil, "OVERLAY")
-	title:SetPoint("LEFT", 7, 0)
 	title:SetJustifyH("LEFT")
 	title:SetWordWrap(false)
 	window.Title = title
+	local dot = header:CreateTexture(nil, "OVERLAY")
+	dot:SetColorTexture(1, 1, 1, 0.3)
+	window.Dot = dot
 	local segment = header:CreateFontString(nil, "OVERLAY")
-	segment:SetPoint("LEFT", title, "RIGHT", 6, 0)
-	segment:SetTextColor(0.55, 0.55, 0.6)
+	segment:SetJustifyH("LEFT")
+	segment:SetWordWrap(false)
+	segment:SetTextColor(0.6, 0.62, 0.66)
 	window.Segment = segment
 	local clock = header:CreateFontString(nil, "OVERLAY")
-	clock:SetPoint("LEFT", segment, "RIGHT", 6, 0)
-	clock:SetTextColor(0.75, 0.75, 0.8)
+	clock:SetJustifyH("RIGHT")
+	clock:SetTextColor(0.78, 0.79, 0.82)
 	window.Clock = clock
 
-	local close = IconButton(header, HEADER_ICONS.close, "Hide this meter")
-	close:SetPoint("RIGHT", -5, 0)
-	local reset = IconButton(header, HEADER_ICONS.reset, "Reset all meter data")
-	reset:SetPoint("RIGHT", close, "LEFT", -5, 0)
-	local seg = IconButton(header, HEADER_ICONS.segment, "Current / Overall")
-	seg:SetPoint("RIGHT", reset, "LEFT", -5, 0)
+	local close = HeaderButton(header, "close", "Hide this meter")
+	local reset = HeaderButton(header, "reset", "Reset all meter data")
+	local seg = HeaderButton(header, "swap", "Current / Overall")
 	window.Buttons = { close = close, reset = reset, segment = seg }
+	window.ButtonOrder = { close, reset, seg }
 	window.Close = close
 
 	function window.ButtonsShown(always)
@@ -724,48 +1288,108 @@ local function MakeWindow(index)
 	seg:SetScript("OnClick", function()
 		local cfg = DB().windows[index]
 		cfg.segment = cfg.segment == "overall" and "current" or "overall"
-		DM:PaintWindow(index)
-		DM:UpdateClocks()
+		window._breakdown = nil
+		DM:NewView(index)
 	end)
 	-- Click the title: pick the meter type (right-click: the segment). While a
 	-- spell breakdown is open, a click goes back.
 	header:SetScript("OnClick", function(_, button)
 		if window._breakdown then
 			window._breakdown = nil
-			DM:PaintWindow(index)
+			DM:NewView(index)
 			return
 		end
 		local UI = Soul.UI
 		if not UI then return end
 		if button == "RightButton" then
-			UI.OpenMenu(title, MenuItems(SEGMENTS), DB().windows[index].segment, function(key)
+			UI.OpenMenu(title, SEGMENT_ITEMS, DB().windows[index].segment, function(key)
 				DB().windows[index].segment = key
-				DM:PaintWindow(index)
-				DM:UpdateClocks()
+				DM:NewView(index)
 			end, 160)
 		else
-			UI.OpenMenu(title, MenuItems(TYPES), DB().windows[index].type, function(key)
+			UI.OpenMenu(title, TYPE_ITEMS, DB().windows[index].type, function(key)
 				DB().windows[index].type = key
-				DM:PaintWindow(index)
+				DM:NewView(index)
 			end, 180)
 		end
 	end)
 
+	-- Body: clips the row strip so rows can glide in and out.
+	local body = CreateFrame("Frame", nil, window)
+	body:SetClipsChildren(true)
+	body:EnableMouseWheel(false)
+	window.Body = body
+	local content = CreateFrame("Frame", nil, body)
+	content:SetPoint("TOPLEFT")
+	content:SetPoint("TOPRIGHT")
+	content:SetHeight(1)
+	window.Content = content
+	-- Scroll thumb on its own layer above the rows so a bar never covers it.
+	local thumbHolder = CreateFrame("Frame", nil, body)
+	thumbHolder:SetAllPoints(body)
+	thumbHolder:SetFrameLevel(content:GetFrameLevel() + 10)
+	thumbHolder:EnableMouse(false)
+	local thumb = thumbHolder:CreateTexture(nil, "OVERLAY", nil, 7)
+	thumb:SetColorTexture(1, 1, 1, 0.22)
+	thumb:SetWidth(2)
+	thumb:Hide()
+	window.Thumb = thumb
+	local empty = body:CreateFontString(nil, "OVERLAY")
+	empty:SetPoint("CENTER", body, "CENTER", 0, 0)
+	empty:SetTextColor(0.5, 0.52, 0.56)
+	empty:Hide()
+	window.Empty = empty
+
+	body:SetScript("OnMouseWheel", function(_, delta)
+		ScrollBy(window, delta)
+	end)
+	window._animStep = function()
+		local now = GetTime()
+		local dt = now - (window._animTime or now)
+		window._animTime = now
+		local pos = window._scrollPos or 0
+		local target = window._scrollTarget or 0
+		pos = pos + (target - pos) * (1 - math_exp(-dt * 16))
+		if math_abs(target - pos) < 0.5 then
+			pos = target
+			StopScrollAnim(window)
+		end
+		if PlaceScroll(window, pos) then DM:PaintWindow(index) end
+	end
+
 	window.rows = {}
-	for i = 1, MAX_ROWS do
-		local row = MakeRow(window)
+	for i = 1, POOL do
+		local row = MakeRow(content)
 		row:SetScript("OnClick", function(self, button)
 			if InCombatLockdown() then return end
 			if window._breakdown or button == "RightButton" then
 				window._breakdown = nil
 			else
+				local src = self._soulTip
 				window._breakdown = self._soulIndex
+				window._breakdownName = nil
+				window._breakdownColor = nil
+				if src then
+					local name = self.Name:GetText()
+					if not IsSecret(name) and type(name) == "string" and name ~= "" then
+						window._breakdownName = name
+					end
+					local class = src.classFilename
+					if not IsSecret(class) and type(class) == "string" then
+						window._breakdownColor = RAID_CLASS_COLORS[class]
+					end
+				end
 			end
-			DM:PaintWindow(index)
+			DM:NewView(index)
 		end)
 		window.rows[i] = row
 	end
-	window.Sync = PaintHeader
+	window._paintKey = (window._paintKey or 0) + 1000
+	window._scrollPos = 0
+	window._scrollTarget = 0
+	window._first = 1
+	window._partial = false
+	window._visible = 8
 	return window
 end
 
@@ -810,6 +1434,7 @@ function DM:OnEnable()
 	if not C_DamageMeter then
 		Soul:Print("C_DamageMeter is missing. Damage meters will stay empty.")
 	end
+	driver = Soul.Ticker and Soul.Ticker:NewDriver() or nil
 	self._gen = 0
 	self._inCombat = false
 	self.windows = {}
@@ -838,15 +1463,15 @@ function DM:OnEnable()
 				local oldW = db.width or width
 				local gap = db.rowGap or 1
 				local oldH = (db.headerHeight or 22) + gap + rows * ((db.rowHeight or 18) + gap) - gap
-				if math.abs(width - oldW) < 3 and math.abs(height - oldH) < 3 then
+				if math_abs(width - oldW) < 3 and math_abs(height - oldH) < 3 then
 					local dir = 0
 					if width > oldW + 0.2 or height > oldH + 0.2 then dir = 1
 					elseif width < oldW - 0.2 or height < oldH - 0.2 then dir = -1 end
-					db.width = math.max(140, oldW + dir)
-					db.rowHeight = math.max(10, math.min(28, (db.rowHeight or 16) + dir))
+					db.width = math_max(140, oldW + dir)
+					db.rowHeight = math_max(10, math_min(28, (db.rowHeight or 16) + dir))
 				else
-					db.width = math.max(140, math.floor(width + 0.5))
-					local rowH = math.floor((height - (db.headerHeight or 22)) / rows) - (db.rowGap or 1)
+					db.width = math_max(140, math_floor(width + 0.5))
+					local rowH = math_floor((height - (db.headerHeight or 22)) / rows) - (db.rowGap or 1)
 					if rowH < 10 then rowH = 10 end
 					if rowH > 28 then rowH = 28 end
 					db.rowHeight = rowH
@@ -913,6 +1538,11 @@ function DM:OnEnable()
 	self:RegisterEvent("DAMAGE_METER_CURRENT_SESSION_UPDATED", refreshIfIdle)
 	self:RegisterEvent("DAMAGE_METER_RESET", function()
 		DM._pinned = nil
+		for i = 1, WINDOWS do
+			local window = DM.windows[i]
+			window._breakdown = nil
+			ResetScroll(window)
+		end
 		DM:RefreshAll()
 	end)
 	self:RegisterEvent("ADDON_RESTRICTION_STATE_CHANGED", function()

@@ -2,7 +2,7 @@
 ## Title: SoulUI Unit Frames
 ## Notes: Player, target, focus, and pet frames
 ## Author: SoulBound
-## Version: 0.5.0
+## Version: 0.7.0
 ## Dependencies: SoulUI
 ## Category: SoulUI
 ## Group: SoulUI

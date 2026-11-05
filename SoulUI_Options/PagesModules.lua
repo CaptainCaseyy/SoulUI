@@ -153,6 +153,11 @@ local function BuildUnitFrames(col)
 		get = function() return Unit().healthSize or 0 end,
 		set = function(v) Unit().healthSize = v ApplyUF() end,
 	})
+	W.Row(col, {
+		type = "toggle", label = "Class-colored name (players)", disabled = off,
+		get = function() return Unit().nameClassColor and true or false end,
+		set = function(v) Unit().nameClassColor = Bool(v) ApplyUF() end,
+	})
 
 	W.Section(col, "Cast bar")
 	W.Row2(col, {
@@ -172,16 +177,54 @@ local function BuildUnitFrames(col)
 		get = function() return Unit().castWidth or 0 end,
 		set = function(v) Unit().castWidth = v > 0 and v or nil ApplyUF() end,
 	}, {
-		type = "color", label = "Cast color",
+		type = "toggle", label = "Spell icon",
 		disabled = function() return off() or not Unit().showCast end,
+		get = function() return Unit().castIcon ~= false end,
+		set = function(v) Unit().castIcon = Bool(v) ApplyUF() end,
+	})
+	W.Row2(col, {
+		type = "color", label = "Cast color (player and pet)",
+		tooltip = "Target, focus and target of target use the enemy cast colors below.",
+		disabled = function()
+			local unit = ufState.unit
+			return off() or not Unit().showCast or not (unit == "player" or unit == "pet")
+		end,
 		get = function()
 			local c = Unit().castColor
 			if type(c) == "table" then return c[1], c[2], c[3] end
 			return Soul:Accent()
 		end,
 		set = W.ColorSet(Unit, "castColor", ApplyUF),
+	}, {
+		type = "slider", label = "Cast text size (0 = auto)", min = 0, max = 24, step = 1,
+		disabled = function() return off() or not Unit().showCast end,
+		get = function() return Unit().castFont or 0 end,
+		set = function(v) Unit().castFont = v ApplyUF() end,
 	})
 	EditButton(col)
+	W.Section(col, "Frame style", "all unit frames")
+	W.Row2(col, {
+		type = "color", label = "Backdrop", alpha = true,
+		get = W.ColorGet(UF, "backdropColor", 0.06, 0.06, 0.07),
+		set = W.ColorSet(UF, "backdropColor", ApplyUF),
+	}, {
+		type = "color", label = "Border", alpha = true,
+		get = W.ColorGet(UF, "borderColor", 0, 0, 0),
+		set = W.ColorSet(UF, "borderColor", ApplyUF),
+	})
+	local function UFToggle(key, label, tooltip)
+		return {
+			type = "toggle", label = label, tooltip = tooltip,
+			get = function() return UF()[key] ~= false end,
+			set = function(v) UF()[key] = Bool(v) ApplyUF() end,
+		}
+	end
+	W.Row2(col, UFToggle("gloss", "Soft shading on the fill"), UFToggle("textShadow", "Text shadow"))
+	W.Row2(col, UFToggle("absorbs", "Shields"), UFToggle("healAbsorbs", "Heal absorbs"))
+	W.Row2(col, UFToggle("hoverHighlight", "Brighten on mouseover"), UFToggle("targetHighlight", "Outline your target", "A white outline on focus, target of target or pet when that unit is your target."))
+	W.Row2(col, UFToggle("tooltip", "Tooltip on mouseover"), UFToggle("raidIcon", "Raid marker"))
+	W.Row2(col, UFToggle("leaderIcon", "Leader crown"), UFToggle("combatIcon", "Combat icon on the player"))
+	if Soul.Options.CastColorRows then Soul.Options.CastColorRows(col) end
 end
 
 Soul:RegisterPage({
@@ -236,6 +279,76 @@ local function BuildNameplates(col)
 		get = function() return NP().castHeight end,
 		set = function(v) NP().castHeight = v ApplyNP() end,
 	})
+	W.Row2(col, {
+		type = "toggle", label = "Spell icon",
+		disabled = function() return off() or not NP().showCast end,
+		get = function() return NP().castIcon ~= false end,
+		set = function(v) NP().castIcon = Bool(v) ApplyNP() end,
+	}, {
+		type = "slider", label = "Cast text size (0 = auto)", min = 0, max = 20, step = 1,
+		disabled = function() return off() or not NP().showCast end,
+		get = function() return NP().castFont or 0 end,
+		set = function(v) NP().castFont = v ApplyNP() end,
+	})
+	W.Section(col, "Look")
+	W.Row2(col, {
+		type = "dropdown", label = "Target indicator", width = 170, disabled = off,
+		items = {
+			{ value = "both", label = "Border and arrows" },
+			{ value = "border", label = "Border" },
+			{ value = "arrows", label = "Arrows" },
+			{ value = "glow", label = "Glow" },
+			{ value = "none", label = "None" },
+		},
+		get = function() return NP().targetStyle or "both" end,
+		set = function(v) NP().targetStyle = v ApplyNP() end,
+	}, {
+		type = "slider", label = "Other plates while targeting", min = 0.2, max = 1, step = 0.05, disabled = off,
+		tooltip = "Opacity of the enemy plates you are not targeting. 1 turns dimming off.",
+		get = function() return NP().nonTargetAlpha or 0.85 end,
+		set = function(v) NP().nonTargetAlpha = v ApplyNP() end,
+	})
+	W.Row2(col, {
+		type = "dropdown", label = "Name", width = 170, disabled = off,
+		items = { { value = "above", label = "Above the bar" }, { value = "inside", label = "Inside the bar" } },
+		get = function() return NP().namePos or "above" end,
+		set = function(v) NP().namePos = v ApplyNP() end,
+	}, {
+		type = "slider", label = "Name size (0 = auto)", min = 0, max = 20, step = 1, disabled = off,
+		get = function() return NP().nameSize or 0 end,
+		set = function(v) NP().nameSize = v ApplyNP() end,
+	})
+	W.Row2(col, {
+		type = "toggle", label = "Health percent", disabled = off,
+		get = function() return NP().showPercent ~= false end,
+		set = function(v) NP().showPercent = Bool(v) ApplyNP() end,
+	}, {
+		type = "slider", label = "Percent size (0 = auto)", min = 0, max = 20, step = 1,
+		disabled = function() return off() or NP().showPercent == false end,
+		get = function() return NP().percentSize or 0 end,
+		set = function(v) NP().percentSize = v ApplyNP() end,
+	})
+	W.Row2(col, {
+		type = "dropdown", label = "Raid marker", width = 170, disabled = off,
+		items = { { value = "left", label = "Left of the bar" }, { value = "top", label = "Above the bar" }, { value = "off", label = "Off" } },
+		get = function() return NP().raidMarker or "left" end,
+		set = function(v) NP().raidMarker = v ApplyNP() end,
+	}, {
+		type = "slider", label = "Marker size (0 = auto)", min = 0, max = 40, step = 1,
+		disabled = function() return off() or NP().raidMarker == "off" end,
+		get = function() return NP().raidMarkerSize or 0 end,
+		set = function(v) NP().raidMarkerSize = v ApplyNP() end,
+	})
+	W.Row2(col, {
+		type = "toggle", label = "Elite and rare mark", disabled = off,
+		get = function() return NP().showClassification ~= false end,
+		set = function(v) NP().showClassification = Bool(v) ApplyNP() end,
+	}, {
+		type = "slider", label = "Spacing", min = 0, max = 8, step = 1, disabled = off,
+		get = function() return NP().spacing or 2 end,
+		set = function(v) NP().spacing = v ApplyNP() end,
+	})
+	if Soul.Options.CastColorRows then Soul.Options.CastColorRows(col) end
 	W.Section(col, "Auras")
 	W.Row2(col, {
 		type = "toggle", label = "Your debuffs", disabled = off,
@@ -391,6 +504,58 @@ local function GroupTab(kind)
 				set = function(v) cfg().showSolo = Bool(v) apply() end,
 			})
 		end
+		local function Toggle(key, label, tooltip)
+			return {
+				type = "toggle", label = label, tooltip = tooltip, disabled = off,
+				get = function() return cfg()[key] ~= false end,
+				set = function(v) cfg()[key] = Bool(v) apply() end,
+			}
+		end
+		W.Section(col, "Look")
+		W.Row2(col, {
+			type = "dropdown", label = "Health color", width = 170, disabled = off,
+			items = { { value = "class", label = "Class color" }, { value = "dark", label = "Dark (class-colored names)" } },
+			get = function() return cfg().healthColor or "class" end,
+			set = function(v) cfg().healthColor = v apply() end,
+		}, {
+			type = "button", label = "Custom bar color", text = "Clear custom color", width = 170,
+			tooltip = "A color picked in edit mode overrides the health color above. This removes it.",
+			click = function() cfg().color = nil apply() end,
+		})
+		W.Row2(col, {
+			type = "dropdown", label = "Text layout", width = 170, disabled = off,
+			items = { { value = "auto", label = "Automatic" }, { value = "inline", label = "Name left, health right" }, { value = "stacked", label = "Centered, stacked" } },
+			get = function() return cfg().textLayout or "auto" end,
+			set = function(v) cfg().textLayout = v apply() end,
+		}, {
+			type = "dropdown", label = "Health text", width = 170, disabled = off,
+			items = { { value = "percent", label = "Percent" }, { value = "deficit", label = "Missing health" }, { value = "none", label = "None" } },
+			get = function() return cfg().healthText or (kind == "raid" and "deficit" or "percent") end,
+			set = function(v) cfg().healthText = v apply() end,
+		})
+		W.Row2(col, Toggle("hideFullHealthText", "Hide text at full health"), {
+			type = "slider", label = "Health text size (0 = auto)", min = 0, max = 28, step = 1, disabled = off,
+			get = function() return cfg().healthFont or 0 end,
+			set = function(v) cfg().healthFont = v apply() end,
+		})
+		W.Row2(col, Toggle("autoFont", "Shrink text to fit"), {
+			type = "toggle", label = "Class-colored names", disabled = off,
+			get = function() return cfg().nameClassColor and true or false end,
+			set = function(v) cfg().nameClassColor = Bool(v) apply() end,
+		})
+		W.Row2(col, Toggle("showRole", "Role icon"), Toggle("showAbsorbs", "Shields"))
+		W.Row2(col, Toggle("gradient", "Soft shading on the bar"), {
+			type = "slider", label = "Out of range opacity", min = 0.1, max = 1, step = 0.05, disabled = off,
+			get = function() return cfg().rangeAlpha or 0.4 end,
+			set = function(v) cfg().rangeAlpha = v apply() end,
+		})
+		W.Row2(col, Toggle("targetHighlight", "Outline your target"), Toggle("hoverHighlight", "Outline on mouseover"))
+		W.Row(col, {
+			type = "dropdown", label = "Dispel icons", width = 170, disabled = off,
+			items = { { value = "inside", label = "Inside the frame" }, { value = "above", label = "Above the frame" } },
+			get = function() return cfg().auraPosition or "inside" end,
+			set = function(v) cfg().auraPosition = v apply() end,
+		})
 		EditButton(col)
 	end
 end
@@ -520,7 +685,7 @@ local function BuildBarStyle(col)
 		get = function() return AB().hotkeySize or 0 end,
 		set = function(v) AB().hotkeySize = v ApplyAB() end,
 	}, {
-		type = "slider", label = "Count", min = 0, max = 24, step = 1,
+		type = "slider", label = "Stacks and charges", min = 0, max = 32, step = 1,
 		get = function() return AB().countSize or 0 end,
 		set = function(v) AB().countSize = v ApplyAB() end,
 	})
@@ -528,6 +693,35 @@ local function BuildBarStyle(col)
 		type = "slider", label = "Macro name", min = 0, max = 20, step = 1,
 		get = function() return AB().macroSize or 0 end,
 		set = function(v) AB().macroSize = v ApplyAB() end,
+	})
+	W.Section(col, "Stacks and charges")
+	W.Row2(col, {
+		type = "dropdown", label = "Position", width = 170,
+		tooltip = "Where the stack or charge number sits on the button.",
+		items = {
+			{ value = "BOTTOMRIGHT", label = "Bottom right" },
+			{ value = "BOTTOMLEFT", label = "Bottom left" },
+			{ value = "BOTTOM", label = "Bottom" },
+			{ value = "CENTER", label = "Center" },
+			{ value = "TOPLEFT", label = "Top left" },
+		},
+		get = function() return AB().countAnchor or "BOTTOMRIGHT" end,
+		set = function(v) AB().countAnchor = v ApplyAB() end,
+	}, {
+		type = "color", label = "Color",
+		get = W.ColorGet(AB, "countColor", 1, 1, 1),
+		set = W.ColorSet(AB, "countColor", ApplyAB),
+	})
+	W.Section(col, "Proc glow")
+	W.Row2(col, {
+		type = "toggle", label = "Glow when a proc lights a spell",
+		get = function() return AB().procGlow ~= false end,
+		set = function(v) AB().procGlow = Bool(v) ApplyAB() end,
+	}, {
+		type = "color", label = "Glow color",
+		disabled = function() return AB().procGlow == false end,
+		get = W.ColorGet(AB, "procColor", 1, 0.82, 0.32),
+		set = W.ColorSet(AB, "procColor", ApplyAB),
 	})
 end
 
@@ -816,6 +1010,30 @@ local function BuildMeters(col)
 		get = function() return DMdb().markSelf ~= false end,
 		set = function(v) DMdb().markSelf = Bool(v) ApplyDM() end,
 	})
+	local function DMToggle(key, label, tooltip)
+		return {
+			type = "toggle", label = label, tooltip = tooltip, disabled = off,
+			get = function() return DMdb()[key] ~= false end,
+			set = function(v) DMdb()[key] = Bool(v) ApplyDM() end,
+		}
+	end
+	W.Row2(col, DMToggle("valueColumns", "Number columns", "Total and per second (or share) in two aligned columns."), {
+		type = "slider", label = "Second column brightness", min = 0.3, max = 1, step = 0.05, disabled = off,
+		get = function() return DMdb().secondaryAlpha or 0.62 end,
+		set = function(v) DMdb().secondaryAlpha = v ApplyDM() end,
+	})
+	W.Row2(col, {
+		type = "dropdown", label = "Text style", width = 150, disabled = off,
+		items = { { value = "shadow", label = "Shadow" }, { value = "outline", label = "Outline" }, { value = "none", label = "None" } },
+		get = function() return DMdb().textStyle or "shadow" end,
+		set = function(v) DMdb().textStyle = v ApplyDM() end,
+	}, {
+		type = "color", label = "Row track", alpha = true, disabled = off,
+		get = W.ColorGet(DMdb, "rowBackground", 1, 1, 1),
+		set = W.ColorSet(DMdb, "rowBackground", ApplyDM),
+	})
+	W.Row2(col, DMToggle("barSheen", "Bar sheen"), DMToggle("emptyText", "Message when empty"))
+	W.Row2(col, DMToggle("scrollWheel", "Scroll long lists with the wheel"), DMToggle("smoothScroll", "Smooth scrolling"))
 	W.Section(col, "Header")
 	W.Row2(col, {
 		type = "slider", label = "Height", min = 14, max = 40, step = 1, disabled = off,

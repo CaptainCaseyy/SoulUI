@@ -226,14 +226,22 @@ function P.Nameplate(holder, width)
 		health:SetStatusBarTexture(Soul:StatusbarTexture())
 		health:SetStatusBarColor(0.85, 0.15, 0.15)
 		health:SetValue(0.64)
-		Soul:ApplyFont(name, math.max(10, h - 4), "OUTLINE")
-		Soul:ApplyFont(pct, math.max(9, h - 5), "OUTLINE")
+		local gap = cfg.spacing or 2
+		local above = (cfg.namePos or "above") == "above"
+		name:ClearAllPoints()
+		if above then
+			name:SetPoint("BOTTOMLEFT", health, "TOPLEFT", 0, gap)
+		else
+			name:SetPoint("LEFT", health, "LEFT", 4, 0)
+		end
+		Soul:ApplyFont(name, (cfg.nameSize or 0) > 0 and cfg.nameSize or math.max(10, h - 4), "OUTLINE")
+		Soul:ApplyFont(pct, (cfg.percentSize or 0) > 0 and cfg.percentSize or math.max(9, h - 5), "OUTLINE")
 		name:SetText(cfg.showName and "Venomous Acolyte" or "")
-		pct:SetText("64%")
+		pct:SetText(cfg.showPercent ~= false and "64%" or "")
 		local ch = cfg.castHeight or 12
 		cast:SetShown(cfg.showCast and true or false)
 		cast:ClearAllPoints()
-		cast:SetPoint("TOPLEFT", health, "BOTTOMLEFT", 0, -1)
+		cast:SetPoint("TOPLEFT", health, "BOTTOMLEFT", 0, -gap)
 		cast:SetSize(w, ch)
 		castBar:SetStatusBarTexture(Soul:StatusbarTexture())
 		local c = Soul.Cast.Settings().interruptible
@@ -245,7 +253,7 @@ function P.Nameplate(holder, width)
 		for i = 1, #icons do
 			icons[i]:ClearAllPoints()
 			icons[i]:SetSize(size, size)
-			icons[i]:SetPoint("BOTTOMLEFT", health, "TOPLEFT", (i - 1) * (size + 2), 3)
+			icons[i]:SetPoint("BOTTOMLEFT", health, "TOPLEFT", (i - 1) * (size + 2), (above and cfg.showName) and (gap * 2 + math.max(10, h - 4)) or (gap + 1))
 			icons[i]:SetTexture(debuffArt[i])
 			icons[i]:SetShown(i <= count)
 		end
@@ -314,7 +322,10 @@ function P.Pips(holder, width)
 			t.bar.bg:SetColorTexture(e[1], e[2], e[3], 1)
 			t.bar:SetValue(i <= 3 and 1 or (i == 4 and 0.4 or 0))
 			Soul:ApplyFont(t.count, countSize, "OUTLINE")
+			-- One centered number, on the middle pip (matches the live bar).
 			t.count:SetText(i == 3 and cfg.showCount ~= false and "3" or "")
+			t.count:SetParent(stage)
+			t.count:SetDrawLayer("OVERLAY", 7)
 		end
 		Fit(stage, w, h, width - 80, height - 40)
 	end

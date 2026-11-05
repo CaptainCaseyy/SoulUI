@@ -2,7 +2,7 @@
 ## Title: SoulUI Resource Bars
 ## Notes: Primary power, class pips, cast bar, and GCD
 ## Author: SoulBound
-## Version: 0.5.0
+## Version: 0.7.0
 ## Dependencies: SoulUI
 ## Category: SoulUI
 ## Group: SoulUI

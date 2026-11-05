@@ -2,7 +2,7 @@
 ## Title: SoulUI Action Bars
 ## Notes: Secure action bars for the main bar and the extra bars
 ## Author: SoulBound
-## Version: 0.5.0
+## Version: 0.7.0
 ## Dependencies: SoulUI
 ## Category: SoulUI
 ## Group: SoulUI

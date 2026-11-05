@@ -2,7 +2,7 @@
 ## Title: SoulUI
 ## Notes: SoulBound unit-frame and nameplate core
 ## Author: SoulBound
-## Version: 0.6.1
+## Version: 0.7.0
 ## SavedVariables: SoulUIDB
 ## Category: SoulUI
 ## Group: SoulUI
@@ -23,6 +23,7 @@ Core\Media.lua
 Core\Format.lua
 Core\UIKit.lua
 Core\Casts.lua
+Core\CastBar.lua
 Core\Auras.lua
 Core\Unlock.lua
 Core\Profiles.lua

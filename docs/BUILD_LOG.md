@@ -2,6 +2,113 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-05 — laptop — 0.7.0 one cast bar for everything, proc glow, shard count, polish pass
+
+The owner tested 0.6.1 and reported problems:
+- **Shard count:** the shard number moved as shards were spent; it should stay centered on the middle shard.
+- **Stack and charge numbers:** these were hard to see, and their size could not be set.
+- **Player unit-frame cast bar:** it still appeared when casting, even though it was turned off.
+- **Cast bars in general:** they sometimes showed and sometimes did not, for the player and for enemies.
+- **Proc glow:** the glow on lit-up abilities flickered and was the wrong size.
+- **Enemy cast colors:** these looked impossible to customize.
+
+The owner also asked for a polishing pass over the whole addon.
+
+**Cast bars, root causes.**
+- **Player unit-frame bar:** the bar was shown straight from the `UNIT_SPELLCAST_START` handler, which never checked `showCast`.
+- **Bars hiding mid-cast:** every end event hid the bar unconditionally. FAILED fires when you press a key mid-cast, and with spell queueing the previous cast's STOP can arrive after the next START. Both hid a live bar.
+- **Nameplates:** they also gave up when the duration object was not ready on START.
+
+**Cast bars, the fix.** A new `Core/CastBar.lua` is the single implementation, used by the player bar (Resources), unit frames and nameplates. See ARCHITECTURE "Cast bars (0.7.0)". It adds:
+- re-query on every end event;
+- a gate on every path, so a disabled bar never shows;
+- retries when the duration is late;
+- one look for all bars: icon flush left, a spark, the remaining time, a fade-out, and a red flash with "Interrupted".
+
+**Enemy cast colors.**
+- **The bug:** a per-unit `castColor` (for example one set from the edit-mode color swatch on the target cast bar) silently replaced the shared interruptible color.
+- **Fix:** that override now applies only to player and pet. The edit-mode swatch on target and focus edits the shared color instead.
+- **Easier to find:** the full color block (interruptible, interrupt on cooldown, not interruptible, high priority ring, and the toggles) now also appears on the Unit Frames and Nameplates pages.
+
+**Shard count.** One number, centered on the row, which is always the middle shard. It shows whole resources through `SetFormattedText("%d")`, so secret values work. This replaces the per-tile number that moved as shards were spent.
+
+**Stack and charge numbers.**
+- They now sit on a text layer above the cooldown swipe and the proc glow.
+- **New settings:** a size slider ("Stacks and charges"), a position setting, and a color.
+
+**Proc glow.**
+- **The cause:** Blizzard's alert is laid out for 45px buttons and is restarted from several template code paths.
+- **The fix:** it is hidden on our buttons and replaced by our own glow: a 2px edge plus an inner wash, drawn to the button rect, pulsing.
+- **Settings:** on/off and a color.
+
+**Polish pass.** Four parallel agents each took one module (own files only), and the lead wired their new settings into the options pages.
+- **Unit frames:**
+  - Solid black outline with a 1px line above the power bar, and a darker backdrop.
+  - Text on its own layer above absorbs.
+  - Dead, offline and tapped states.
+  - Heal absorbs.
+  - Hover and "is your target" outlines.
+  - Raid marker, leader crown and combat icon.
+  - Events now update only what changed.
+- **Nameplates:**
+  - Per-plate pixel-exact border.
+  - Target indicator (border, arrows, both, glow or none) and dimming of the other plates.
+  - Name above or inside the bar.
+  - Percent text, raid marker, elite/rare mark, gray when tapped.
+  - One spacing value for all rows.
+  - Style is reapplied only when something changed.
+- **Party and raid:**
+  - Pixel-snapped sizes, a 1px border and a 1px line above the power bar.
+  - Class or dark health color.
+  - Inline or stacked text, with percent or missing-health text that hides at full health.
+  - Dead, ghost, offline and AFK states.
+  - Range fade (never on yourself).
+  - Target and hover outlines, absorbs, a ready-check icon.
+  - Dispel icons inside the frame.
+  - Raid `columnSpacing` sign fixed.
+  - Party gap is now 1, and Layout.lua was updated to match.
+- **Meters:**
+  - **Float numbers fixed:** "23M (21.600304115133)". The client's `AbbreviateNumbers` defaults leave values below 1000 unabbreviated; the meter now passes its own breakpoints.
+  - Two aligned number columns.
+  - Header on one baseline, with drawn icons.
+  - Empty-state text.
+  - Smooth wheel scrolling of long lists.
+  - Your own row marked.
+
+**Files.**
+- **New:** `SoulUI/Core/CastBar.lua`.
+- **Changed:**
+  - `Core/Casts.lua` (no change in behaviour)
+  - `Core/Layout.lua`
+  - `SoulUI.toc`
+  - all module .lua and Defaults files
+  - `SoulUI_Options/Pages.lua`, `PagesModules.lua` and `Previews.lua`
+  - `tools/audit.mjs`, so its checks look for the cast APIs in CastBar.lua
+- All `.toc` versions are now 0.7.0.
+
+**Review pass.** A review agent found these, all fixed:
+- **Load-order crash (critical):** `Soul.Options` was nil while Pages.lua loaded, which would have broken the whole settings window. `Widgets.lua` now creates it.
+- **Stale cast after a target change:** the old target's cast stayed on the frame. `CastBar:Reset()` now runs on unit change.
+- **Interrupted flash cut short:** a second end event during the fade shortened it. Only a live cast finishes now.
+- **Target of target:** the game sends no cast events for it, so its bar is polled while a cast is up.
+- **Proc glow textures leaking** on every Apply. The glow is now built once and repainted only when its color changes.
+- **Proc glow missing after a bar reappears:** the visibility gate is gone.
+- **Vertical party resize:** used the 5-across math. It now reads the orientation.
+- **Smaller fixes:**
+  - no tables or colors created per cast event;
+  - the time binding resumes after Alt+Z;
+  - edit mode no longer previews a cast bar that is turned off;
+  - action bar defaults added for the new keys.
+
+**Not tested in game (all of it).** To check:
+- the cast bar on fast chain-casting and on interrupts;
+- the proc glow on a real proc;
+- whether `IsSpellOverlayed` returns plain or secret values;
+- the meter number formatting (`/run print(SoulUI:GetModule("DamageMeters").Abbrev(21.6))` should print 21);
+- the unit-frame tooltip on mouseover (new, on by default);
+- the raid row spacing;
+- the nameplate arrow glyphs.
+
 ## 2026-11-05 — laptop — 0.6.1 bundled UI font
 
 The owner asked to bundle a font for a closer match to Ellesmere's typography. Arial Narrow, the 0.6.0 default, was the nearest font the client ships.

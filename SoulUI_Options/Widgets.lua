@@ -23,6 +23,8 @@ local Soul = SoulUI
 local UI = Soul.UI
 local W = {}
 Soul.Widgets = W
+-- Pages.lua publishes helpers on Soul.Options before Panel.lua (loaded last) runs.
+Soul.Options = Soul.Options or {}
 
 local ROW_H = 46
 local PAD = 36   -- page inset, matches Panel.lua GUTTER

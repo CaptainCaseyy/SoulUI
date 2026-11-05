@@ -113,9 +113,10 @@ local function CastColor(key)
 	}
 end
 
-local function BuildCasts(col)
-	W.Note(col, "Enemy cast bars on nameplates, target and focus. Interruptible casts use the first color; when your interrupt is on cooldown they switch to the second, so you know to leave it to someone else. Casts that cannot be interrupted turn gray with a lock. Spells the game marks as important get a red outline, and an important cast that cannot be interrupted gets a STUN badge: a stun, knockback or incapacitate is the answer (bosses are immune).")
-	W.Section(col, "Colors")
+-- Enemy cast colors and signals. Shared by General > Casts, Unit Frames and
+-- Nameplates, so the same switches show wherever enemy casts are edited.
+local function CastColorRows(col)
+	W.Section(col, "Enemy cast colors", "target, focus and nameplates")
 	local interruptible = CastColor("interruptible")
 	local cooldown = CastColor("kickCooldown")
 	local locked = CastColor("locked")
@@ -124,26 +125,26 @@ local function BuildCasts(col)
 		{ type = "color", label = "Interrupt on cooldown", get = cooldown.get, set = cooldown.set,
 			disabled = function() return not CastCfg().kickColoring end })
 	W.Row2(col, { type = "color", label = "Not interruptible", get = locked.get, set = locked.set },
-		{ type = "color", label = "Important outline", get = important.get, set = important.set,
+		{ type = "color", label = "High priority ring", get = important.get, set = important.set,
 			disabled = function() return not CastCfg().showImportant end })
-	W.Section(col, "Signals")
 	W.Row2(col, {
 		type = "toggle", label = "Track my interrupt cooldown",
 		tooltip = "Colors interruptible casts differently while your interrupt (Kick, Pummel, Counterspell...) is on cooldown.",
 		get = function() return CastCfg().kickColoring end,
 		set = function(v) CastCfg().kickColoring = v and true or false RefreshCasts() end,
 	}, {
-		type = "toggle", label = "Lock icon on uninterruptible",
+		type = "toggle", label = "Lock on uninterruptible",
 		get = function() return CastCfg().showLock end,
 		set = function(v) CastCfg().showLock = v and true or false RefreshCasts() end,
 	})
 	W.Row2(col, {
-		type = "toggle", label = "Outline important casts",
+		type = "toggle", label = "Ring high priority casts",
+		tooltip = "A pulsing ring around casts the game marks as important.",
 		get = function() return CastCfg().showImportant end,
 		set = function(v) CastCfg().showImportant = v and true or false RefreshCasts() end,
 	}, {
 		type = "toggle", label = "STUN badge",
-		tooltip = "Shown when a cast is both important and uninterruptible.",
+		tooltip = "Shown when a cast is both important and uninterruptible: a stun, knockback or incapacitate is the answer.",
 		get = function() return CastCfg().showStun end,
 		set = function(v) CastCfg().showStun = v and true or false RefreshCasts() end,
 	})
@@ -153,6 +154,12 @@ local function BuildCasts(col)
 			RefreshCasts()
 		end },
 	})
+end
+Soul.Options.CastColorRows = CastColorRows
+
+local function BuildCasts(col)
+	W.Note(col, "Enemy cast bars on nameplates, target and focus. Gold: interrupt it. Orange: interruptible, but your interrupt is on cooldown. Gray with a lock: cannot be interrupted. A pulsing red ring marks spells the game flags as high priority; a high priority cast that cannot be interrupted also gets a STUN badge (bosses are immune to stuns).")
+	CastColorRows(col)
 end
 
 local function BuildModules(col)

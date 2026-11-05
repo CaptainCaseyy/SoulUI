@@ -23,6 +23,15 @@ SoulUI.Defaults.DamageMeters = {
 	refresh = 0.25,
 	showClock = true,
 	bgAlpha = 0.75,
+	-- 0.6.2 meter polish
+	valueColumns = true,    -- "both"/"percent": numbers in two right-aligned columns
+	secondaryAlpha = 0.62,  -- brightness of the per-second / share column (0.3-1)
+	textStyle = "shadow",   -- shadow | outline | none
+	barSheen = true,        -- soft highlight on the top half of each bar
+	rowBackground = { 1, 1, 1, 0.04 }, -- empty track behind each bar (r, g, b, a)
+	emptyText = true,       -- "Waiting for combat" when a window has no data
+	scrollWheel = true,     -- mouse wheel scrolls when there are more entries than rows
+	smoothScroll = true,    -- glide instead of jumping a row at a time
 	windows = {
 		{ enabled = true, type = "healing", segment = "current", x = 1040, y = 60 },
 		{ enabled = true, type = "damage", segment = "overall", x = 1040, y = -160 },

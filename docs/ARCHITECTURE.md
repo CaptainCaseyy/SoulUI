@@ -170,9 +170,26 @@ Both are built from `Core/UIKit.lua` (`SoulUI.UI`): movable windows (`UI.Window`
 
 **Hiding elements (0.5.0).** `getEnabled()` / `setEnabled(on)` map an element to its module's own enable flag (`units[u].enabled`, `units[u].showCast`, `bars[k].enabled`, `showPrimary/showPips/showCast/showGCD`, `party/raid.enabled`, `windows[i].enabled`). There is no separate "hidden" table: hiding is the module setting, so it saves per profile, Cancel reverts it with the module snapshot, and the module's own page shows the same state. A hidden element keeps a dim "ghost" mover labelled "(hidden)" (toolbar switch "Hidden", `account.edit.ghosts`); the inspector's "Shown" switch toggles it. General > Hide & Show lists every element with `setEnabled`, grouped by module, plus the Blizzard toggles. `isHidden()` is now only for movers that do not apply at all. New movers must provide both functions. `Soul:Place` divides offsets by the frame's scale ratio, so frames with their own scale (Blizzard's) land where the UIParent-unit position says.
 
+## Cast bars (0.7.0)
+
+`Core/CastBar.lua` (`SoulUI.CastBar`) is the only cast bar. The player bar (Resources), unit frames and nameplates each create theirs with `CastBar.New(parent, { enemy = bool, name })`, set `cb.allowed` (the module's on/off setting) and `cb.getColor` (friendly color), call `cb:Layout(height, showIcon, fontSize)`, and forward `UNIT_SPELLCAST_*` with `cb:HandleEvent(event)`. Unit changes and settings changes go through `cb:Refresh()`, and edit mode uses `cb:SetPreview(on)`. Rules:
+- **End events:** STOP, FAILED and INTERRUPTED re-query the unit and only finish the bar if it really stopped casting. A failed key press mid-cast, or a queued spell's late STOP, used to hide live bars.
+- **Late duration:** a START whose duration object is not ready retries 3 times, 50ms apart.
+- **`allowed()` is checked on every path,** so a bar that is turned off never shows.
+- **End of cast:** a finished cast fades out; an interrupted one flashes red with "Interrupted".
+- **Look:** square icon flush left, a spark on the fill edge, and the time bound with a duration text binding.
+- **Enemy colors** still come from `Core/Casts.lua` (`theme.cast`). They are edited in one shared block (`Soul.Options.CastColorRows`) shown on General > Casts, Unit Frames and Nameplates. A per-unit `castColor` now applies only to player and pet.
+
+## Action buttons (0.7.0)
+
+- **Proc glow:** Blizzard's `SpellActivationAlert` is set to alpha 0 on SoulUI buttons, through a `ShowAlert` hook and in Chrome. Our glow is a 2px edge plus an inner gradient wash, drawn to the exact button rect, pulsing in one animation group.
+- **What drives the glow:** `C_SpellActivationOverlay.IsSpellOverlayed(buttonSpell)`, re-checked (coalesced) on `SPELL_ACTIVATION_OVERLAY_GLOW_SHOW/HIDE` and on slot or page changes. A secret answer drives alpha through `SetAlphaFromBoolean`.
+- **Text overlay:** hotkey, stack/charge count and macro name are re-parented to a text frame above the cooldown and glow.
+- **Settings:** `countAnchor`, `countColor`, `procGlow`, `procColor`.
+
 ## Casts and auras (0.4.0)
 
-`Core/Casts.lua` (`SoulUI.Cast`) colors enemy cast bars: interruptible, interrupt-on-cooldown (`C_Spell.GetSpellCooldownDuration(kick):IsZero()`), not interruptible (lock icon), important outline (`C_Spell.IsSpellImportant`), and a STUN badge for important + uninterruptible. Secret booleans only reach `C_CurveUtil.EvaluateColorValueFromBoolean(bool, ifTrue, ifFalse)` and `SetAlphaFromBoolean`. An AND of two secret booleans is two nested frames each with its own boolean alpha. Settings: `theme.cast`. Note the engine argument order is (bool, **ifTrue**, ifFalse); `Secret.PickColor(flag, ifFalse, ifTrue)` swaps for its callers.
+`Core/Casts.lua` (`SoulUI.Cast`) colors enemy cast bars (since 0.7.0 for `Core/CastBar.lua` objects): interruptible, interrupt-on-cooldown (`C_Spell.GetSpellCooldownDuration(kick):IsZero()`), not interruptible (lock icon), important outline (`C_Spell.IsSpellImportant`), and a STUN badge for important + uninterruptible. Secret booleans only reach `C_CurveUtil.EvaluateColorValueFromBoolean(bool, ifTrue, ifFalse)` and `SetAlphaFromBoolean`. An AND of two secret booleans is two nested frames each with its own boolean alpha. Settings: `theme.cast`. Note the engine argument order is (bool, **ifTrue**, ifFalse); `Secret.PickColor(flag, ifFalse, ifTrue)` swaps for its callers.
 
 `Core/Auras.lua` (`SoulUI.Auras`) is the only aura path: `AuraContainer` groups with filter strings. `Auras.Icons` makes icon rows; `Auras.Highlight` makes one frame-sized button that exists only while the filter matches (the filter is the test, Lua never reads aura data). Filters used: `HARMFUL|RAID_PLAYER_DISPELLABLE` (cleansable on friends), `HELPFUL|DISPELLABLE` (purge/soothe on enemies), `HARMFUL|PLAYER` (your debuffs). `Auras.OffensiveDispel()` answers "can this character purge / soothe" from the spellbook. Containers are created out of combat only; friendly nameplates are never modified (forbidden in instances).
 

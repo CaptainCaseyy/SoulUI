@@ -396,7 +396,13 @@ local function RefreshText(btn)
 	if btn.Count then
 		Soul:ApplyFont(btn.Count, countSize, "OUTLINE")
 		btn.Count:ClearAllPoints()
-		btn.Count:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -2, 2)
+		local anchor = db.countAnchor or "BOTTOMRIGHT"
+		local ox = anchor:find("LEFT") and 2 or (anchor:find("RIGHT") and -2 or 0)
+		local oy = anchor:find("TOP") and -2 or (anchor:find("BOTTOM") and 2 or 0)
+		btn.Count:SetPoint(anchor, btn, anchor, ox, oy)
+		btn.Count:SetJustifyH(anchor:find("LEFT") and "LEFT" or (anchor:find("RIGHT") and "RIGHT" or "CENTER"))
+		local cc = db.countColor
+		if type(cc) == "table" then btn.Count:SetTextColor(cc[1], cc[2], cc[3]) else btn.Count:SetTextColor(1, 1, 1) end
 		btn.Count:SetShown(not cfg or cfg.showCount ~= false)
 	end
 	if btn.Name then
@@ -520,6 +526,192 @@ local function FitIcon(btn)
 	icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 end
 
+------------------------------------------------------------------------------
+-- Proc glow (0.7.0). Blizzard's SpellActivationAlert is laid out for a 45px
+-- button and restarted by several template code paths, which is what made it
+-- the wrong size and flicker on SoulUI buttons. It is hidden on our buttons and
+-- replaced by a glow drawn to the exact button rect: a 2px edge and a soft
+-- inner wash that pulse together. It follows IsSpellOverlayed for the
+-- button's spell; a secret answer drives alpha through SetAlphaFromBoolean.
+------------------------------------------------------------------------------
+
+local function ProcColor()
+	local c = DB().procColor
+	if type(c) == "table" then return c[1], c[2], c[3] end
+	return 1, 0.82, 0.32
+end
+
+local function GlowFrame(btn)
+	if btn._soulGlow then return btn._soulGlow end
+	local host = CreateFrame("Frame", nil, btn)
+	host:SetAllPoints(btn)
+	host:SetFrameLevel(btn:GetFrameLevel() + 4)
+	host:EnableMouse(false)
+	host:Hide()
+	local pulse = CreateFrame("Frame", nil, host)
+	pulse:SetAllPoints()
+	local parts = {}
+	local function Edge(a1, a2, w, h)
+		local t = pulse:CreateTexture(nil, "OVERLAY", nil, 6)
+		t:SetPoint(a1)
+		t:SetPoint(a2)
+		if w then t:SetWidth(w) end
+		if h then t:SetHeight(h) end
+		t:SetTexture("Interface\\Buttons\\WHITE8X8")
+		parts[#parts + 1] = { tex = t, alpha = 1 }
+		return t
+	end
+	host.top = Edge("TOPLEFT", "TOPRIGHT", nil, 2)
+	host.bottom = Edge("BOTTOMLEFT", "BOTTOMRIGHT", nil, 2)
+	host.left = Edge("TOPLEFT", "BOTTOMLEFT", 2, nil)
+	host.right = Edge("TOPRIGHT", "BOTTOMRIGHT", 2, nil)
+	-- Inner wash: four strips fading toward the center.
+	local function Wash(a1, a2, w, h, orient, reverse)
+		local t = pulse:CreateTexture(nil, "OVERLAY", nil, 5)
+		t:SetPoint(a1)
+		t:SetPoint(a2)
+		if w then t:SetWidth(w) end
+		if h then t:SetHeight(h) end
+		t:SetTexture("Interface\\Buttons\\WHITE8X8")
+		parts[#parts + 1] = { tex = t, orient = orient, reverse = reverse }
+	end
+	host.parts = parts
+	host.washSize = 0
+	host.Wash = Wash
+	local anim = pulse:CreateAnimationGroup()
+	anim:SetLooping("BOUNCE")
+	local fade = anim:CreateAnimation("Alpha")
+	fade:SetFromAlpha(1)
+	fade:SetToAlpha(0.45)
+	fade:SetDuration(0.55)
+	fade:SetSmoothing("IN_OUT")
+	host.anim = anim
+	host:SetScript("OnShow", function(self) self.anim:Play() end)
+	host:SetScript("OnHide", function(self) self.anim:Stop() end)
+	btn._soulGlow = host
+	return host
+end
+
+local function PaintGlow(btn)
+	local host = GlowFrame(btn)
+	local size = btn._soulSize or 45
+	local wash = math.max(4, math.floor(size * 0.22))
+	if not host.washBuilt then
+		host.washBuilt = true
+		host.Wash("TOPLEFT", "TOPRIGHT", nil, wash, "VERTICAL", false)
+		host.Wash("BOTTOMLEFT", "BOTTOMRIGHT", nil, wash, "VERTICAL", true)
+		host.Wash("TOPLEFT", "BOTTOMLEFT", wash, nil, "HORIZONTAL", true)
+		host.Wash("TOPRIGHT", "BOTTOMRIGHT", wash, nil, "HORIZONTAL", false)
+		host.washSize = wash
+	elseif host.washSize ~= wash then
+		for i = 1, #host.parts do
+			local part = host.parts[i]
+			if part.orient == "VERTICAL" then part.tex:SetHeight(wash)
+			elseif part.orient == "HORIZONTAL" then part.tex:SetWidth(wash) end
+		end
+		host.washSize = wash
+	end
+	local r, g, b = ProcColor()
+	if host.cr == r and host.cg == g and host.cb == b then return end
+	host.cr, host.cg, host.cb = r, g, b
+	for i = 1, #host.parts do
+		local part = host.parts[i]
+		if part.orient and part.tex.SetGradient and CreateColor then
+			local strong, clear = CreateColor(r, g, b, 0.55), CreateColor(r, g, b, 0)
+			-- VERTICAL: first color is the bottom; HORIZONTAL: first is the left.
+			if part.reverse then
+				part.tex:SetGradient(part.orient, strong, clear)
+			else
+				part.tex:SetGradient(part.orient, clear, strong)
+			end
+		elseif part.orient then
+			part.tex:SetVertexColor(r, g, b, 0.25)
+		else
+			part.tex:SetVertexColor(r, g, b, 1)
+		end
+	end
+end
+
+local function ButtonSpell(btn)
+	local action = btn:GetAttribute("action")
+	if type(action) ~= "number" or not GetActionInfo then return nil end
+	local kind, id, sub = GetActionInfo(action)
+	if Soul.Secret.IsSecret(kind) or Soul.Secret.IsSecret(id) then return nil end
+	if kind == "spell" then return id end
+	if kind == "macro" then
+		if sub == "spell" then return id end
+		if GetMacroSpell and type(id) == "number" then return GetMacroSpell(id) end
+	end
+	return nil
+end
+
+local function UpdateGlow(btn)
+	local overlayed = C_SpellActivationOverlay and C_SpellActivationOverlay.IsSpellOverlayed
+	local spell = ButtonSpell(btn)
+	local host = btn._soulGlow
+	if DB().procGlow == false or not overlayed or not spell then
+		if host then host:Hide() end
+		return
+	end
+	local ok, flag = pcall(overlayed, spell)
+	if not ok or type(flag) == "nil" then
+		if host then host:Hide() end
+		return
+	end
+	if Soul.Secret.IsSecret(flag) then
+		host = GlowFrame(btn)
+		PaintGlow(btn)
+		host:Show()
+		pcall(host.SetAlphaFromBoolean, host, flag, 1, 0)
+		return
+	end
+	if flag then
+		host = GlowFrame(btn)
+		PaintGlow(btn)
+		host:SetAlpha(1)
+		host:Show()
+	elseif host then
+		host:Hide()
+	end
+end
+
+local glowQueued = false
+local function UpdateAllGlows()
+	glowQueued = false
+	for i = 1, #AB.buttons do
+		UpdateGlow(AB.buttons[i])
+	end
+end
+
+local function QueueGlows()
+	if glowQueued then return end
+	glowQueued = true
+	C_Timer.After(0, UpdateAllGlows)
+end
+AB.QueueGlows = QueueGlows
+
+local alertHooked = false
+local function SuppressBlizzardGlow()
+	if alertHooked then return end
+	alertHooked = true
+	local manager = _G.ActionButtonSpellAlertManager
+	if manager and manager.ShowAlert then
+		hooksecurefunc(manager, "ShowAlert", function(_, button)
+			if button and button._soulSize and button.SpellActivationAlert then
+				button.SpellActivationAlert:SetAlpha(0)
+			end
+		end)
+	end
+	if _G.ActionButton_ShowOverlayGlow then
+		hooksecurefunc("ActionButton_ShowOverlayGlow", function(button)
+			if button and button._soulSize then
+				local alert = button.SpellActivationAlert or button.overlay
+				if alert then alert:SetAlpha(0) end
+			end
+		end)
+	end
+end
+
 -- Sizes the button for real (no SetScale). SetScale also scales SetPoint
 -- offsets, which spread the old buttons apart until the holder cut them off.
 local function Chrome(btn, size)
@@ -557,7 +749,8 @@ local function Chrome(btn, size)
 	end
 	if btn.AutoCastOverlay then btn.AutoCastOverlay:SetAllPoints(btn) end
 	local scale = size / 45
-	if btn.SpellActivationAlert then btn.SpellActivationAlert:SetScale(scale) end
+	if btn.SpellActivationAlert then btn.SpellActivationAlert:SetAlpha(0) end
+	if btn._soulGlow then btn._soulGlow.cr = nil PaintGlow(btn) end
 	if btn.TargetReticleAnimFrame then btn.TargetReticleAnimFrame:SetScale(scale) end
 	if btn.AssistedCombatRotationFrame then btn.AssistedCombatRotationFrame:SetScale(scale) end
 	Soul:ShowBorder(btn, DB().showBorder and true or false, 1)
@@ -647,6 +840,22 @@ local function CreateButton(def, pack, index)
 	end
 	btn.UpdateButtonArt = function() end
 	Detach(btn)
+	-- Hotkey, stack count and macro name ride a frame above the cooldown
+	-- swipe and the proc glow, so the numbers stay readable.
+	local text = CreateFrame("Frame", nil, btn)
+	text:SetAllPoints(btn)
+	text:SetFrameLevel(btn:GetFrameLevel() + 6)
+	text:EnableMouse(false)
+	btn._soulText = text
+	local holder = btn.TextOverlayContainer
+	if holder and holder.SetFrameLevel then holder:SetFrameLevel(btn:GetFrameLevel() + 6) end
+	for _, key in ipairs({ "HotKey", "Count", "Name" }) do
+		local fs = btn[key]
+		if fs and fs.SetParent and (not holder or fs:GetParent() ~= holder) then
+			pcall(fs.SetParent, fs, text)
+		end
+		if fs and fs.SetDrawLayer then pcall(fs.SetDrawLayer, fs, "OVERLAY", 7) end
+	end
 	local icon = IconOf(btn)
 	if icon and not btn.chargeCooldown then
 		local created, charge = pcall(CreateFrame, "Cooldown", nil, btn, "CooldownFrameTemplate")
@@ -705,9 +914,18 @@ local function CreateBar(def)
 end
 
 local function OnDispatcher(_, event, arg1, arg2, arg3)
+	if event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW" or event == "SPELL_ACTIVATION_OVERLAY_GLOW_HIDE" then
+		QueueGlows()
+		return
+	end
 	if event == "ACTIONBAR_SLOT_CHANGED" then
 		PaintAll(type(arg1) == "number" and arg1 or nil)
+		QueueGlows()
 		return
+	end
+	if event == "ACTIONBAR_PAGE_CHANGED" or event == "UPDATE_BONUS_ACTIONBAR" or event == "PLAYER_ENTERING_WORLD"
+		or event == "UPDATE_VEHICLE_ACTIONBAR" or event == "UPDATE_OVERRIDE_ACTIONBAR" then
+		QueueGlows()
 	end
 	if event == "ACTION_RANGE_CHECK_UPDATE" then
 		if not Soul.Secret.IsSecret(arg2) and not Soul.Secret.IsSecret(arg3) and arg3 and arg2 == false then
@@ -742,6 +960,7 @@ function AB:Apply()
 		end
 		PaintAll()
 		RefreshHotkeys()
+		QueueGlows()
 	end)
 end
 
@@ -751,6 +970,7 @@ end
 
 function AB:OnEnable()
 	Park()
+	SuppressBlizzardGlow()
 	for i = 1, #BARS do
 		if not CreateBar(BARS[i]) then return end
 	end
@@ -770,6 +990,8 @@ function AB:OnEnable()
 		"UPDATE_BINDINGS",
 		"CVAR_UPDATE",
 		"BAG_UPDATE_DELAYED",
+		"SPELL_ACTIVATION_OVERLAY_GLOW_SHOW",
+		"SPELL_ACTIVATION_OVERLAY_GLOW_HIDE",
 	}
 	for i = 1, #events do
 		self:RegisterEvent(events[i], OnDispatcher)

@@ -107,7 +107,12 @@ mustInclude("SoulUI_ActionBars/ActionBars.lua", [
 mustInclude("SoulUI_ResourceBars/ResourceBars.lua", [
   "SetMinMaxValues",
   "GetSpellCooldownDuration",
+  "Soul.CastBar.New",
+]);
+mustInclude("SoulUI/Core/CastBar.lua", [
   "UnitCastingDuration",
+  "UnitChannelDuration",
+  "SetTimerDuration",
 ]);
 mustInclude("SoulUI_DamageMeters/DamageMeters.lua", [
   "GetCombatSessionFromType",

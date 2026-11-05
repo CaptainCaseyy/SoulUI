@@ -3,38 +3,169 @@ if SoulUI_Blocked or not SoulUI then return end
 local Soul = SoulUI
 local NP = Soul:NewModule("Nameplates", "SoulUI_Nameplates")
 
+-- Hot-path upvalues.
+local pairs, type, pcall, floor, max = pairs, type, pcall, math.floor, math.max
+local UnitHealth, UnitHealthMax, UnitHealthPercent = UnitHealth, UnitHealthMax, UnitHealthPercent
+local UnitIsDeadOrGhost, UnitReaction, UnitIsPlayer, UnitClass = UnitIsDeadOrGhost, UnitReaction, UnitIsPlayer, UnitClass
+local UnitIsTapDenied, UnitName, UnitExists, UnitClassification = UnitIsTapDenied, UnitName, UnitExists, UnitClassification
+local GetRaidTargetIndex, InCombatLockdown = GetRaidTargetIndex, InCombatLockdown
+
 local REACTION = {
 	{ 0.85, 0.15, 0.15 },
 	{ 0.85, 0.15, 0.15 },
 	{ 0.90, 0.45, 0.10 },
 	{ 0.85, 0.80, 0.20 },
 }
+local TAPPED = { 0.50, 0.50, 0.52 }
+local BACKDROP = { 0.06, 0.06, 0.07, 0.90 }
 
 local WATCH = {
-	"UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_NAME_UPDATE", "UNIT_FACTION",
+	"UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_NAME_UPDATE", "UNIT_FACTION", "UNIT_CLASSIFICATION_CHANGED",
 	"UNIT_SPELLCAST_START", "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_FAILED",
 	"UNIT_SPELLCAST_FAILED_QUIET", "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_DELAYED",
 	"UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_CHANNEL_UPDATE", "UNIT_SPELLCAST_CHANNEL_STOP",
 	"UNIT_SPELLCAST_INTERRUPTIBLE", "UNIT_SPELLCAST_NOT_INTERRUPTIBLE",
 	"UNIT_SPELLCAST_EMPOWER_START", "UNIT_SPELLCAST_EMPOWER_UPDATE", "UNIT_SPELLCAST_EMPOWER_STOP",
 }
+local HEALTH_EVENT = { UNIT_HEALTH = true, UNIT_MAXHEALTH = true, UNIT_FACTION = true }
 
-local CAST_END = {
-	UNIT_SPELLCAST_STOP = true,
-	UNIT_SPELLCAST_FAILED = true,
-	UNIT_SPELLCAST_FAILED_QUIET = true,
-	UNIT_SPELLCAST_INTERRUPTED = true,
-	UNIT_SPELLCAST_CHANNEL_STOP = true,
-	UNIT_SPELLCAST_EMPOWER_STOP = true,
+-- Classification marks use the game's own nameplate atlases when they exist,
+-- otherwise a small flat square in the same color.
+local CLASS_MARK = {
+	worldboss = { atlas = "nameplates-icon-elite-gold", r = 1, g = 0.78, b = 0.25 },
+	elite = { atlas = "nameplates-icon-elite-gold", r = 1, g = 0.78, b = 0.25 },
+	rareelite = { atlas = "nameplates-icon-elite-silver", r = 0.78, g = 0.82, b = 0.9 },
+	rare = { atlas = "nameplates-icon-elite-silver", r = 0.78, g = 0.82, b = 0.9 },
 }
+for _, mark in pairs(CLASS_MARK) do
+	local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(mark.atlas)
+	if not info then mark.atlas = nil end
+end
+
+local RAID_ICONS = "Interface\\TargetingFrame\\UI-RaidTargetingIcons"
 
 local pool = {}
 local byUnit = {}
 local hiddenBlizz = {}
+local styleGen = 1
+-- Last target pass, so a plate added later can be dimmed without a full pass.
+local targetState = { dim = false, style = "both", alpha = 1 }
 
 local function DB()
 	return Soul:ModuleDB("Nameplates")
 end
+
+local function Clamp(v, lo, hi)
+	if v < lo then return lo end
+	if v > hi then return hi end
+	return v
+end
+
+-- One physical pixel in this plate's own units. Plates hang off WorldFrame,
+-- not UIParent, so Soul.Pixel (UIParent based) is off whenever the UI scale
+-- is not 1.
+local function PlatePixel(visual)
+	local _, height = GetPhysicalScreenSize()
+	local scale = visual:GetEffectiveScale()
+	if type(height) ~= "number" or height < 1 or type(scale) ~= "number" or scale <= 0 then
+		return 1
+	end
+	return 768 / height / scale
+end
+
+local function Snap(value, px)
+	return floor(value / px + 0.5) * px
+end
+
+------------------------------------------------------------------------------
+-- Edges and arrows (plain textures and lines, no per-event tables)
+------------------------------------------------------------------------------
+
+local function Ring(parent, sub, r, g, b, a)
+	local ring = {}
+	for _, side in pairs({ "top", "bottom", "left", "right" }) do
+		local t = parent:CreateTexture(nil, "OVERLAY", nil, sub)
+		t:SetColorTexture(r, g, b, a)
+		ring[side] = t
+	end
+	return ring
+end
+
+-- out = how far outside the region the ring sits (0 = drawn on its edge pixels).
+local function PlaceRing(ring, region, px, out)
+	local t, b, l, r = ring.top, ring.bottom, ring.left, ring.right
+	t:ClearAllPoints()
+	t:SetPoint("TOPLEFT", region, "TOPLEFT", -out, out)
+	t:SetPoint("TOPRIGHT", region, "TOPRIGHT", out, out)
+	t:SetHeight(px)
+	b:ClearAllPoints()
+	b:SetPoint("BOTTOMLEFT", region, "BOTTOMLEFT", -out, -out)
+	b:SetPoint("BOTTOMRIGHT", region, "BOTTOMRIGHT", out, -out)
+	b:SetHeight(px)
+	l:ClearAllPoints()
+	l:SetPoint("TOPLEFT", region, "TOPLEFT", -out, out - px)
+	l:SetPoint("BOTTOMLEFT", region, "BOTTOMLEFT", -out, -out + px)
+	l:SetWidth(px)
+	r:ClearAllPoints()
+	r:SetPoint("TOPRIGHT", region, "TOPRIGHT", out, out - px)
+	r:SetPoint("BOTTOMRIGHT", region, "BOTTOMRIGHT", out, -out + px)
+	r:SetWidth(px)
+end
+
+local function ColorRing(ring, r, g, b, a)
+	ring.top:SetColorTexture(r, g, b, a)
+	ring.bottom:SetColorTexture(r, g, b, a)
+	ring.left:SetColorTexture(r, g, b, a)
+	ring.right:SetColorTexture(r, g, b, a)
+end
+
+local function ShowRing(ring, shown)
+	ring.top:SetShown(shown)
+	ring.bottom:SetShown(shown)
+	ring.left:SetShown(shown)
+	ring.right:SetShown(shown)
+end
+
+-- Two chevrons pointing at the bar from both sides: { l1, l2, r1, r2 }.
+local function BuildArrows(visual)
+	if not visual.CreateLine then return nil end
+	local arrows = {}
+	for i = 1, 4 do
+		local line = visual:CreateLine(nil, "OVERLAY")
+		line:Hide()
+		arrows[i] = line
+	end
+	return arrows
+end
+
+local function PlaceArrows(arrows, health, gap, aw, hh, thick)
+	if not arrows then return end
+	-- Left chevron: ">" whose tip sits `gap` left of the bar.
+	arrows[1]:SetStartPoint("LEFT", health, -gap - aw, hh)
+	arrows[1]:SetEndPoint("LEFT", health, -gap, 0)
+	arrows[2]:SetStartPoint("LEFT", health, -gap - aw, -hh)
+	arrows[2]:SetEndPoint("LEFT", health, -gap, 0)
+	-- Right chevron: "<".
+	arrows[3]:SetStartPoint("RIGHT", health, gap + aw, hh)
+	arrows[3]:SetEndPoint("RIGHT", health, gap, 0)
+	arrows[4]:SetStartPoint("RIGHT", health, gap + aw, -hh)
+	arrows[4]:SetEndPoint("RIGHT", health, gap, 0)
+	for i = 1, 4 do arrows[i]:SetThickness(thick) end
+end
+
+local function ColorArrows(arrows, r, g, b)
+	if not arrows then return end
+	for i = 1, 4 do arrows[i]:SetColorTexture(r, g, b, 1) end
+end
+
+local function ShowArrows(arrows, shown)
+	if not arrows then return end
+	for i = 1, 4 do arrows[i]:SetShown(shown) end
+end
+
+------------------------------------------------------------------------------
+-- Auras
+------------------------------------------------------------------------------
 
 -- Purge row and outline follow the setting: "auto" shows them only when you
 -- know an offensive dispel (Purge, Dispel Magic, Spellsteal, Soothe,
@@ -55,6 +186,46 @@ local function ApplyAuraVisibility(visual)
 	Soul.Auras.SetShown(visual.PurgeGlow, purge and cfg.purgeGlow ~= false)
 end
 
+-- Aura rows follow the stack computed in ApplyStyle (_auraY, _purgeX).
+-- Containers are only moved out of combat.
+local function LayoutAuras(visual)
+	if not visual._soulAuras or InCombatLockdown() then return end
+	local health = visual.Health
+	if visual.Debuffs then
+		visual.Debuffs:ClearAllPoints()
+		visual.Debuffs:SetPoint("BOTTOMLEFT", health, "TOPLEFT", 0, visual._auraY or 3)
+	end
+	if visual.Purge then
+		visual.Purge:ClearAllPoints()
+		visual.Purge:SetPoint("LEFT", health, "RIGHT", visual._purgeX or 4, 0)
+	end
+	if visual.PurgeGlow then Soul.Auras.Refit(visual.PurgeGlow, health) end
+end
+
+-- Aura rows are built lazily the first time a plate is used out of combat
+-- (and for any plate still missing them when combat ends), so login does not
+-- build 90 containers at once. Sizes are fixed when the container is made.
+local function EnsureAuras(visual)
+	if visual._soulAuras or InCombatLockdown() then return end
+	visual._soulAuras = true
+	local health = visual.Health
+	local cfg = DB()
+	local debuffSize = cfg.debuffSize or 20
+	local purgeSize = cfg.purgeSize or 20
+	visual.Debuffs = Soul.Auras.Icons(visual, "none", {
+		{ key = "mine", filter = "HARMFUL|PLAYER", max = cfg.debuffMax or 5, size = debuffSize },
+	}, { point = "BOTTOMLEFT", relPoint = "TOPLEFT", x = 0, y = 3, width = cfg.width, height = debuffSize })
+	visual.Purge = Soul.Auras.Icons(visual, "none", {
+		{ key = "purge", filter = "HELPFUL|DISPELLABLE", max = 3, size = purgeSize, border = { 0.25, 0.65, 1 } },
+	}, { width = purgeSize * 3 + 6, height = purgeSize })
+	visual.PurgeGlow = Soul.Auras.Highlight(health, "none", "HELPFUL|DISPELLABLE", { 0.25, 0.65, 1 }, 2)
+	LayoutAuras(visual)
+end
+
+------------------------------------------------------------------------------
+-- Unit data
+------------------------------------------------------------------------------
+
 local function Hostile(unit)
 	local reaction = UnitReaction(unit, "player")
 	-- A secret reaction means we cannot tell friend from foe. Leave Blizzard's plate alone.
@@ -65,6 +236,11 @@ local function Hostile(unit)
 end
 
 local function ColorBar(bar, unit)
+	local tapped = UnitIsTapDenied(unit)
+	if not Soul.Secret.IsSecret(tapped) and tapped then
+		bar:SetStatusBarColor(TAPPED[1], TAPPED[2], TAPPED[3])
+		return
+	end
 	local player = UnitIsPlayer(unit)
 	if not Soul.Secret.IsSecret(player) and player then
 		local _, class = UnitClass(unit)
@@ -109,125 +285,218 @@ local function UpdateHealth(visual)
 		bar:SetValue(UnitHealth(unit))
 	end
 	ColorBar(bar, unit)
-	local curve = CurveConstants and CurveConstants.ScaleTo100
-	if curve then
-		visual.HealthText:SetFormattedText("%.0f%%", UnitHealthPercent(unit, true, curve))
+	if visual._showPct then
+		local curve = CurveConstants and CurveConstants.ScaleTo100
+		if curve then
+			visual.HealthText:SetFormattedText("%.0f%%", UnitHealthPercent(unit, true, curve))
+		end
 	end
 end
 
 local function UpdateName(visual)
 	if not visual.unit then return end
-	local cfg = DB()
-	if not cfg.showName then
+	if not DB().showName then
 		visual.Name:SetText("")
 		return
 	end
+	-- Possibly secret: display only. Width is fixed and word wrap is off, so
+	-- long names end in "..." without Lua measuring them.
 	local name = UnitName(visual.unit)
 	visual.Name:SetText(name or "")
 end
 
-local function ShowCast(visual, channel)
-	local unit = visual.unit
-	local duration
-	if channel then
-		duration = UnitChannelDuration(unit)
+-- Name sits after the classification mark when one is shown.
+local function PlaceName(visual)
+	local name = visual.Name
+	local width = visual._w or 140
+	local shift = 0
+	if visual.Class:IsShown() then shift = (visual._classSize or 10) + 2 end
+	name:ClearAllPoints()
+	if visual._nameAbove then
+		name:SetPoint("BOTTOMLEFT", visual.Health, "TOPLEFT", shift, visual._gap or 2)
+		name:SetWidth(max(10, width - shift))
 	else
-		duration = UnitCastingDuration(unit)
+		name:SetPoint("LEFT", visual.Health, "LEFT", 4 + shift, 0)
+		name:SetWidth(max(10, width - 8 - shift - (visual._pctReserve or 0)))
 	end
-	if not Soul.Secret.Present(duration) then
-		visual.Cast:Hide()
-		return
-	end
-	local info, notInterruptible
-	if channel then
-		info = { UnitChannelInfo(unit) }
-		notInterruptible = info[7]
-	else
-		info = { UnitCastingInfo(unit) }
-		notInterruptible = info[8]
-	end
-	local name, texture = info[1], info[3]
-	visual.CastText:SetText(name or "")
-	if Soul.Secret.Present(texture) then
-		pcall(visual.CastIcon.SetTexture, visual.CastIcon, texture)
-	end
-	local direction = Enum.StatusBarTimerDirection
-	local interp = Enum.StatusBarInterpolation
-	if not (visual.CastBar.SetTimerDuration and direction and interp) then
-		visual.Cast:Hide()
-		return
-	end
-	local which = channel and direction.RemainingTime or direction.ElapsedTime
-	local ok = pcall(visual.CastBar.SetTimerDuration, visual.CastBar, duration, interp.Immediate, which)
-	if not ok then
-		visual.Cast:Hide()
-		return
-	end
-	if visual.CastBar.SetToTargetValue then visual.CastBar:SetToTargetValue() end
-	-- spellID may be secret: pick the index without truth-testing the value.
-	local spellID
-	if channel then spellID = info[8] else spellID = info[9] end
-	Soul.Cast.Paint(visual.Cast, visual.CastBar, notInterruptible, spellID)
-	visual.Cast:Show()
 end
 
-local function RefreshCast(visual)
+local function UpdateClassification(visual)
 	local unit = visual.unit
-	if not unit or not DB().showCast then
-		visual.Cast:Hide()
-		Soul.Cast.Clear(visual.Cast)
-		return
+	local icon = visual.Class
+	local mark
+	if unit and DB().showClassification ~= false and DB().showName then
+		local kind = UnitClassification(unit)
+		if not Soul.Secret.IsSecret(kind) and type(kind) == "string" then
+			mark = CLASS_MARK[kind]
+		end
 	end
-	local casting = UnitCastingInfo(unit)
-	if Soul.Secret.Present(casting) then
-		ShowCast(visual, false)
-		return
-	end
-	local channel = UnitChannelInfo(unit)
-	if Soul.Secret.Present(channel) then
-		ShowCast(visual, true)
+	if mark then
+		if mark.atlas then
+			icon:SetAtlas(mark.atlas)
+			icon:SetVertexColor(1, 1, 1, 1)
+		else
+			icon:SetColorTexture(mark.r, mark.g, mark.b, 1)
+		end
+		icon:Show()
 	else
-		visual.Cast:Hide()
+		icon:Hide()
 	end
+	PlaceName(visual)
+end
+
+local function UpdateRaidMarker(visual)
+	local icon = visual.Marker
+	local unit = visual.unit
+	if not unit or DB().raidMarker == "off" then
+		icon:Hide()
+		return
+	end
+	local index = GetRaidTargetIndex(unit)
+	if type(index) == "nil" then
+		icon:Hide()
+		return
+	end
+	if Soul.Secret.IsSecret(index) then
+		-- Blizzard's helper may cope with a secret index; if it throws, hide.
+		local ok = SetRaidTargetIconTexture and pcall(SetRaidTargetIconTexture, icon, index)
+		icon:SetShown(ok and true or false)
+		return
+	end
+	if type(index) ~= "number" or index < 1 or index > 8 then
+		icon:Hide()
+		return
+	end
+	local col = (index - 1) % 4
+	local row = floor((index - 1) / 4)
+	icon:SetTexCoord(col * 0.25, col * 0.25 + 0.25, row * 0.25, row * 0.25 + 0.25)
+	icon:Show()
 end
 
 local function UpdateVisual(visual, event)
-	UpdateHealth(visual)
-	UpdateName(visual)
-	if not event or event == "SHOW" or (type(event) == "string" and event:find("SPELLCAST", 1, true)) then
-		if CAST_END[event] then
-			visual.Cast:Hide()
-			Soul.Cast.Clear(visual.Cast)
-		elseif event == "UNIT_SPELLCAST_START" then
-			ShowCast(visual, false)
-		elseif event == "UNIT_SPELLCAST_CHANNEL_START" or event == "UNIT_SPELLCAST_EMPOWER_START" then
-			ShowCast(visual, true)
-		else
-			RefreshCast(visual)
-		end
+	if not event or event == "SHOW" then
+		UpdateHealth(visual)
+		UpdateName(visual)
+		UpdateClassification(visual)
+		UpdateRaidMarker(visual)
+		visual.Cast:SetUnit(visual.unit)
+		visual.Cast:Reset()
+	elseif HEALTH_EVENT[event] then
+		UpdateHealth(visual)
+	elseif event == "UNIT_NAME_UPDATE" then
+		UpdateName(visual)
+	elseif event == "UNIT_CLASSIFICATION_CHANGED" then
+		UpdateClassification(visual)
+	elseif Soul.CastBar.IsCastEvent(event) then
+		visual.Cast:HandleEvent(event)
 	end
 end
 
+------------------------------------------------------------------------------
+-- Style
+------------------------------------------------------------------------------
+
+-- Plate stack, top to bottom: raid marker (top mode), your debuffs, name
+-- (above mode), health bar, cast bar. Purge row to the right of the health
+-- bar, raid marker (left mode) to the left. One spacing value separates all
+-- of them; chevrons get their own lane so nothing moves when you target.
 local function ApplyStyle(visual)
 	local cfg = DB()
-	visual:SetSize(cfg.width, cfg.height)
+	local px = PlatePixel(visual)
+	visual._px = px
+	visual._gen = styleGen
+	local w = Snap(cfg.width or 140, px)
+	local h = Snap(cfg.height or 16, px)
+	local gap = max(px, Snap(cfg.spacing or 2, px))
+	visual._w, visual._gap = w, gap
+	visual:SetSize(w, h)
 	if visual.SetClipsChildren then visual:SetClipsChildren(false) end
-	visual.Health:ClearAllPoints()
-	visual.Health:SetPoint("TOPLEFT")
-	visual.Health:SetPoint("TOPRIGHT")
-	visual.Health:SetHeight(cfg.height)
-	visual.Name:SetWidth(math.max(20, cfg.width - 48))
-	Soul:ApplyFont(visual.Name, math.max(10, cfg.height - 4), "OUTLINE")
-	Soul:ApplyFont(visual.HealthText, math.max(9, cfg.height - 5), "OUTLINE")
-	visual.Cast:SetHeight(cfg.castHeight)
-	visual.CastIcon:SetSize(cfg.castHeight, cfg.castHeight)
-	Soul.Cast.Decorate(visual.Cast, visual.CastBar)
-	Soul.Cast.Size(visual.Cast, cfg.castHeight)
-	local tex = Soul:StatusbarTexture()
-	visual.Health:SetStatusBarTexture(tex)
-	visual.CastBar:SetStatusBarTexture(tex)
+
+	local health = visual.Health
+	health:ClearAllPoints()
+	health:SetPoint("TOPLEFT")
+	health:SetPoint("TOPRIGHT")
+	health:SetHeight(h)
+	health:SetStatusBarTexture(Soul:StatusbarTexture())
+	health.bg:SetColorTexture(BACKDROP[1], BACKDROP[2], BACKDROP[3], BACKDROP[4])
+	PlaceRing(visual.Border, health, px, 0)
+
+	-- Text.
+	local nameAbove = cfg.namePos ~= "inside"
+	local showName = cfg.showName and true or false
+	visual._nameAbove = nameAbove
+	local nameSize = cfg.nameSize or 0
+	if nameSize <= 0 then
+		if nameAbove then
+			nameSize = Clamp(floor(h * 0.25 + 8.5), 9, 16)
+		else
+			nameSize = Clamp(h - 5, 8, 16)
+		end
+	end
+	local pctSize = cfg.percentSize or 0
+	if pctSize <= 0 then pctSize = Clamp(floor(h * 0.62 + 1.5), 8, 16) end
+	local showPct = cfg.showPercent ~= false
+	visual._showPct = showPct
+	visual._pctReserve = showPct and floor(pctSize * 2.6 + 0.5) or 0
+	Soul:ApplyFont(visual.Name, nameSize, "OUTLINE")
+	Soul:ApplyFont(visual.HealthText, pctSize, "OUTLINE")
+	visual.HealthText:SetShown(showPct)
+	if not showPct then visual.HealthText:SetText("") end
+
+	-- Classification mark beside the name.
+	local classSize = nameAbove and nameSize or Clamp(h - 4, 8, nameSize + 2)
+	visual._classSize = classSize
+	local icon = visual.Class
+	icon:ClearAllPoints()
+	icon:SetSize(classSize, classSize)
+	if nameAbove then
+		icon:SetPoint("BOTTOMLEFT", health, "TOPLEFT", 0, gap + 1)
+	else
+		icon:SetPoint("LEFT", health, "LEFT", 3, 0)
+	end
+	PlaceName(visual)
+
+	-- Target indicator.
 	local r, g, b = Soul:Accent()
-	visual.Highlight:SetColorTexture(r, g, b, 0.95)
+	PlaceRing(visual.TargetRing, health, px, px)
+	ColorRing(visual.TargetRing, r, g, b, 1)
+	local style = cfg.targetStyle or "both"
+	local arrowLane = 0
+	if visual.Arrows then
+		local hh = Snap(Clamp(h * 0.4, 4, 9), px)
+		local aw = Snap(hh * 0.75, px)
+		local thick = max(px, Snap(2, px))
+		PlaceArrows(visual.Arrows, health, gap + px, aw, hh, thick)
+		ColorArrows(visual.Arrows, r, g, b)
+		if style == "arrows" or style == "both" then arrowLane = aw + gap + thick end
+	end
+	visual.Highlight:SetColorTexture(r, g, b, 0.6)
+
+	-- Raid marker.
+	local markerSize = cfg.raidMarkerSize or 0
+	if markerSize <= 0 then markerSize = Clamp(h + 4, 14, 28) end
+	local nameBlock = (showName and nameAbove) and (nameSize + gap) or 0
+	local auraY = gap + nameBlock
+	local marker = visual.Marker
+	marker:ClearAllPoints()
+	marker:SetSize(markerSize, markerSize)
+	if cfg.raidMarker == "top" then
+		local debuffBlock = cfg.showDebuffs ~= false and ((cfg.debuffSize or 20) + gap) or 0
+		marker:SetPoint("BOTTOM", health, "TOP", 0, auraY + debuffBlock)
+	else
+		marker:SetPoint("RIGHT", health, "LEFT", -(gap + arrowLane), 0)
+	end
+
+	-- Cast bar under the health bar (the cast frame draws its own 1px edge).
+	local cast = visual.Cast
+	cast:ClearAllPoints()
+	cast:SetPoint("TOPLEFT", health, "BOTTOMLEFT", 0, -gap)
+	cast:SetPoint("TOPRIGHT", health, "BOTTOMRIGHT", 0, -gap)
+	cast:Layout(cfg.castHeight, cfg.castIcon ~= false, cfg.castFont or 0)
+
+	visual._auraY = auraY
+	visual._purgeX = gap + 1 + arrowLane
+	LayoutAuras(visual)
 end
 
 local function BuildPlate(index)
@@ -238,75 +507,99 @@ local function BuildPlate(index)
 	Soul:Round(visual)
 	local health = Soul:StatusBar(visual)
 	visual.Health = health
+	-- "glow" target style: accent wash behind the bar.
 	local highlight = visual:CreateTexture(nil, "BACKGROUND")
 	highlight:SetPoint("TOPLEFT", health, "TOPLEFT", -2, 2)
 	highlight:SetPoint("BOTTOMRIGHT", health, "BOTTOMRIGHT", 2, -2)
 	highlight:Hide()
 	visual.Highlight = highlight
+	visual.Border = Ring(health, 7, 0, 0, 0, 1)
+	visual.TargetRing = Ring(health, 6, 1, 1, 1, 1)
+	ShowRing(visual.TargetRing, false)
+	visual.Arrows = BuildArrows(visual)
+
 	local name = health:CreateFontString(nil, "OVERLAY")
-	name:SetPoint("LEFT", 4, 0)
 	name:SetJustifyH("LEFT")
 	name:SetWordWrap(false)
+	if name.SetMaxLines then name:SetMaxLines(1) end
 	name:SetTextColor(0.95, 0.95, 0.95)
 	visual.Name = name
 	local percent = health:CreateFontString(nil, "OVERLAY")
 	percent:SetPoint("RIGHT", -4, 0)
 	percent:SetJustifyH("RIGHT")
+	percent:SetWordWrap(false)
 	percent:SetTextColor(0.95, 0.95, 0.95)
 	visual.HealthText = percent
-	local cast = CreateFrame("Frame", nil, visual)
-	cast:SetPoint("TOPLEFT", health, "BOTTOMLEFT", 0, -1)
-	cast:SetPoint("TOPRIGHT", health, "BOTTOMRIGHT", 0, -1)
-	cast:Hide()
-	cast:EnableMouse(false)
-	local icon = cast:CreateTexture(nil, "ARTWORK")
-	icon:SetPoint("TOPLEFT")
-	icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-	visual.CastIcon = icon
-	local bar = Soul:StatusBar(cast)
-	bar:SetPoint("TOPLEFT", icon, "TOPRIGHT", 1, 0)
-	bar:SetPoint("BOTTOMRIGHT")
-	visual.CastBar = bar
-	local text = bar:CreateFontString(nil, "OVERLAY")
-	text:SetPoint("LEFT", 4, 0)
-	text:SetPoint("RIGHT", -4, 0)
-	text:SetJustifyH("LEFT")
-	text:SetWordWrap(false)
-	text:SetTextColor(0.95, 0.95, 0.95)
-	Soul:ApplyFont(text, 10, "OUTLINE")
-	visual.CastText = text
+
+	local class = health:CreateTexture(nil, "OVERLAY", nil, 2)
+	class:Hide()
+	visual.Class = class
+	local marker = health:CreateTexture(nil, "OVERLAY", nil, 3)
+	marker:SetTexture(RAID_ICONS)
+	marker:Hide()
+	visual.Marker = marker
+
+	local cast = Soul.CastBar.New(visual, { enemy = true })
+	cast:SetPoint("TOPLEFT", health, "BOTTOMLEFT", 0, -2)
+	cast:SetPoint("TOPRIGHT", health, "BOTTOMRIGHT", 0, -2)
+	cast.allowed = function() return DB().showCast and visual.unit ~= nil end
 	visual.Cast = cast
-	Soul:Border(health)
+	visual.CastBar = cast.Bar
 	pool[index] = visual
 	return visual
 end
 
--- Aura rows are built lazily the first time a plate is used out of combat
--- (and for any plate still missing them when combat ends), so login does not
--- build 90 containers at once. Sizes are fixed when the container is made.
-local function EnsureAuras(visual)
-	if visual._soulAuras or InCombatLockdown() then return end
-	visual._soulAuras = true
-	local health = visual.Health
-	local cfg = DB()
-	local debuffSize = cfg.debuffSize or 20
-	local purgeSize = cfg.purgeSize or 20
-	visual.Debuffs = Soul.Auras.Icons(visual, "none", {
-		{ key = "mine", filter = "HARMFUL|PLAYER", max = cfg.debuffMax or 5, size = debuffSize },
-	}, { point = "BOTTOMLEFT", relPoint = "TOPLEFT", x = 0, y = 3, width = cfg.width, height = debuffSize })
-	if visual.Debuffs then
-		visual.Debuffs:ClearAllPoints()
-		visual.Debuffs:SetPoint("BOTTOMLEFT", health, "TOPLEFT", 0, 3)
-	end
-	visual.Purge = Soul.Auras.Icons(visual, "none", {
-		{ key = "purge", filter = "HELPFUL|DISPELLABLE", max = 3, size = purgeSize, border = { 0.25, 0.65, 1 } },
-	}, { width = purgeSize * 3 + 6, height = purgeSize })
-	if visual.Purge then
-		visual.Purge:ClearAllPoints()
-		visual.Purge:SetPoint("LEFT", health, "RIGHT", 4, 0)
-	end
-	visual.PurgeGlow = Soul.Auras.Highlight(health, "none", "HELPFUL|DISPELLABLE", { 0.25, 0.65, 1 }, 2)
+------------------------------------------------------------------------------
+-- Target indicator and dimming
+------------------------------------------------------------------------------
+
+local function ApplyTarget(visual, isTarget, dim, style, alpha)
+	ShowRing(visual.TargetRing, isTarget and (style == "border" or style == "both"))
+	ShowArrows(visual.Arrows, isTarget and (style == "arrows" or style == "both"))
+	visual.Highlight:SetShown(isTarget and style == "glow")
+	visual:SetAlpha(dim and alpha or 1)
 end
+
+local function TargetSettings()
+	local cfg = DB()
+	local alpha = cfg.nonTargetAlpha
+	if type(alpha) ~= "number" then alpha = 1 end
+	targetState.style = cfg.targetStyle or "both"
+	targetState.alpha = Clamp(alpha, 0.2, 1)
+end
+
+local function MarkTarget()
+	TargetSettings()
+	local style, alpha = targetState.style, targetState.alpha
+	local targetPlate = C_NamePlate.GetNamePlateForUnit("target", false)
+	-- Dim the others only while the target is one of our (enemy) plates.
+	local ours = false
+	if targetPlate and UnitExists("target") then
+		for _, visual in pairs(byUnit) do
+			if visual.plate == targetPlate then ours = true break end
+		end
+	end
+	targetState.dim = ours
+	for _, visual in pairs(byUnit) do
+		local isTarget = ours and visual.plate == targetPlate
+		visual._isTarget = isTarget
+		ApplyTarget(visual, isTarget, ours and not isTarget, style, alpha)
+	end
+end
+
+-- A plate that just appeared: a full pass only when it is the target.
+local function MarkNewPlate(visual)
+	if visual.plate == C_NamePlate.GetNamePlateForUnit("target", false) then
+		MarkTarget()
+		return
+	end
+	visual._isTarget = false
+	ApplyTarget(visual, false, targetState.dim, targetState.style, targetState.alpha)
+end
+
+------------------------------------------------------------------------------
+-- Plate lifecycle
+------------------------------------------------------------------------------
 
 local function RestorePlate(plate)
 	if not plate or not hiddenBlizz[plate] then return end
@@ -343,22 +636,16 @@ local function Release(visual)
 	visual:ClearAllPoints()
 	visual.unit = nil
 	visual.plate = nil
-	visual.Highlight:Hide()
+	visual.Cast:Stop()
+	visual.Cast:SetUnit(nil)
+	visual._isTarget = false
+	ApplyTarget(visual, false, false)
+	visual.Marker:Hide()
+	visual.Class:Hide()
 	Soul.Auras.SetUnit(visual.Debuffs, "none")
 	Soul.Auras.SetUnit(visual.Purge, "none")
 	Soul.Auras.SetUnit(visual.PurgeGlow, "none")
 	if plate then RestorePlate(plate) end
-end
-
-local function MarkTarget()
-	local targetPlate = C_NamePlate.GetNamePlateForUnit("target", false)
-	for _, visual in pairs(byUnit) do
-		if visual.plate and visual.plate == targetPlate then
-			visual.Highlight:Show()
-		else
-			visual.Highlight:Hide()
-		end
-	end
 end
 
 local function WatchUnit(unit)
@@ -408,7 +695,10 @@ function NP:AddPlate(_, unit)
 	visual:SetPoint("CENTER", plate, "CENTER", 0, 0)
 	local level = plate:GetFrameLevel() or 1
 	visual:SetFrameLevel(level + 5)
-	ApplyStyle(visual)
+	-- Restyle only when settings changed or this plate's pixel size differs.
+	if visual._gen ~= styleGen or visual._px ~= PlatePixel(visual) then
+		ApplyStyle(visual)
+	end
 	EnsureAuras(visual)
 	Soul.Auras.SetUnit(visual.Debuffs, unit)
 	Soul.Auras.SetUnit(visual.Purge, unit)
@@ -416,15 +706,18 @@ function NP:AddPlate(_, unit)
 	ApplyAuraVisibility(visual)
 	visual:Show()
 	UpdateVisual(visual, "SHOW")
-	MarkTarget()
+	MarkNewPlate(visual)
 end
 
 function NP:RemovePlate(_, unit)
 	local visual = byUnit[unit]
 	if not visual then return end
+	local wasTarget = visual._isTarget
 	UnwatchUnit(unit)
 	byUnit[unit] = nil
 	Release(visual)
+	-- The target's plate left the screen: stop dimming the rest.
+	if wasTarget then MarkTarget() end
 end
 
 function NP:ApplyCVars()
@@ -450,6 +743,7 @@ end
 
 function NP:Apply()
 	self:ApplyCVars()
+	styleGen = styleGen + 1
 	if not DB().enabled then
 		local units = {}
 		for unit in pairs(byUnit) do
@@ -466,7 +760,6 @@ function NP:Apply()
 	end
 	for i = 1, #pool do
 		if not InCombatLockdown() then ApplyAuraVisibility(pool[i]) end
-		if pool[i].PurgeGlow then Soul.Auras.Refit(pool[i].PurgeGlow, pool[i].Health) end
 	end
 	for _, visual in pairs(byUnit) do
 		ApplyStyle(visual)
@@ -475,6 +768,7 @@ function NP:Apply()
 		end
 	end
 	self:Rescan()
+	MarkTarget()
 end
 
 function NP:OnInitialize()
@@ -493,6 +787,9 @@ function NP:OnEnable()
 				Soul.Auras.SetUnit(visual.Purge, visual.unit)
 				Soul.Auras.SetUnit(visual.PurgeGlow, visual.unit)
 				ApplyAuraVisibility(visual)
+			else
+				-- Restyles during combat could not move the aura rows.
+				LayoutAuras(visual)
 			end
 		end
 	end)
@@ -504,6 +801,9 @@ function NP:OnEnable()
 	self:RegisterEvent("NAME_PLATE_UNIT_ADDED", function(mod, _, unit) mod:AddPlate(_, unit) end)
 	self:RegisterEvent("NAME_PLATE_UNIT_REMOVED", function(mod, _, unit) mod:RemovePlate(_, unit) end)
 	self:RegisterEvent("PLAYER_TARGET_CHANGED", function() MarkTarget() end)
+	self:RegisterEvent("RAID_TARGET_UPDATE", function()
+		for _, visual in pairs(byUnit) do UpdateRaidMarker(visual) end
+	end)
 	-- Your interrupt coming off cooldown recolors casts already on screen.
 	self:RegisterEvent("SPELL_UPDATE_COOLDOWN", function()
 		local ready = Soul.Cast.KickReady()

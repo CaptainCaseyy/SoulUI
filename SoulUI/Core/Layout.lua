@@ -152,7 +152,7 @@ function Soul:BuildDefaultLayout(profile)
 
 	local group = Section(modules, "GroupFrames")
 	local party = Section(group, "party")
-	party.width, party.height, party.spacing, party.showPower = partyW, partyH, 2, false
+	party.width, party.height, party.spacing, party.showPower = partyW, partyH, 1, false
 	party.orientation = "vertical"
 	party.x, party.y = Soul.Pixel:Scale(partyX), Soul.Pixel:Scale(partyY)
 	Pos(positions, "GroupFrames:party", partyX, partyY)
@@ -187,7 +187,7 @@ function Soul:DefaultPartySpot(W, H, P, g, col)
 	local partyH = Round(1.3 * P)
 	local columnsRight = -W / 2 + Round(0.2 * P) + 3 * (col + g)
 	local partyX = columnsRight + Round(0.5 * P) + partyW / 2
-	local stack = partyH * 5 + 2 * 4
+	local stack = partyH * 5 + 1 * 4
 	local partyY = H / 2 - Round(4.2 * P) - stack / 2
 	return partyX, partyY, partyW, partyH
 end

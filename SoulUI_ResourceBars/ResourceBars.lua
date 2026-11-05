@@ -136,62 +136,30 @@ local function LayoutPips(count)
 				pip.gloss:SetShown(cfg.gloss and true or false)
 				pip.gloss:SetHeight(math.max(2, math.floor(height * 0.4)))
 			end
-			if pip.Count then
-				Soul:ApplyFont(pip.Count, countSize, "OUTLINE")
-				pip.Count:SetText(tostring(i))
-			end
 		else
 			tile:Hide()
 		end
 	end
+	if RB.pipCount then Soul:ApplyFont(RB.pipCount, countSize, "OUTLINE") end
 end
 
--- Count text sits on the last full tile ("3" on the third shard). With a plain
--- value Lua picks the tile; with a secret value each tile's alpha comes from a
--- step curve, so nothing compares the secret in Lua.
-local countCurves = {}
-local function CountCurve(i, scale)
-	local key = i * 100 + scale
-	if countCurves[key] ~= nil then return countCurves[key] or nil end
-	local curve
-	if C_CurveUtil and C_CurveUtil.CreateCurve and Enum and Enum.LuaCurveType then
-		local ok = pcall(function()
-			curve = C_CurveUtil.CreateCurve()
-			curve:SetType(Enum.LuaCurveType.Step)
-			curve:AddPoint(0, 0)
-			curve:AddPoint(i * scale, 1)
-			curve:AddPoint((i + 1) * scale, 0)
-		end)
-		if not ok then curve = nil end
-	end
-	countCurves[key] = curve or false
-	return curve
-end
-
-local function PaintCounts(count, current, scale)
-	local show = DB().pips.showCount ~= false
-	if not show then
-		for i = 1, MAX_PIPS do
-			if RB.pipBars[i].Count then RB.pipBars[i].Count:SetAlpha(0) end
-		end
+-- One count number, centered on the row: the row is symmetric, so its center
+-- is the middle pip (or the gap between the two middle pips). It shows whole
+-- resources (UnitPower without the fractional scale), formatted by the engine
+-- so a secret value never touches Lua arithmetic.
+local function PaintCount(power)
+	local text = RB.pipCount
+	if not text then return end
+	if DB().pips.showCount == false or not power then
+		text:Hide()
 		return
 	end
-	if not Soul.Secret.IsSecret(current) then
-		local full = type(current) == "number" and math.floor(current / scale) or 0
-		for i = 1, MAX_PIPS do
-			local text = RB.pipBars[i].Count
-			if text then text:SetAlpha((i == full and i <= count) and 1 or 0) end
-		end
+	local value = UnitPower("player", power)
+	if not Soul.Secret.Present(value) or not pcall(text.SetFormattedText, text, "%d", value) then
+		text:Hide()
 		return
 	end
-	for i = 1, MAX_PIPS do
-		local text = RB.pipBars[i].Count
-		if text then
-			local curve = i <= count and CountCurve(i, scale)
-			local ok = curve and pcall(function() text:SetAlpha(curve:Evaluate(current)) end)
-			if not ok then text:SetAlpha(0) end
-		end
-	end
+	text:Show()
 end
 
 local function UpdatePips()
@@ -208,9 +176,7 @@ local function UpdatePips()
 		end
 		Reveal(RB.pips, true)
 		LayoutPips(6)
-		for i = 1, MAX_PIPS do
-			if RB.pipBars[i].Count then RB.pipBars[i].Count:SetAlpha(0) end
-		end
+		PaintCount(nil)
 		for i = 1, 6 do
 			local pip = RB.pipBars[i]
 			local start, duration, ready = GetRuneCooldown(i)
@@ -259,7 +225,7 @@ local function UpdatePips()
 		pip:SetMinMaxValues((i - 1) * scale, i * scale)
 		pip:SetValue(current)
 	end
-	PaintCounts(count, current, scale)
+	PaintCount(spec.power)
 end
 
 local function UpdatePrimary()
@@ -283,86 +249,6 @@ local function UpdatePrimary()
 	end
 end
 
-local function ShowCast(channel, empower)
-	local bar = RB.cast.Bar
-	local duration
-	if empower and UnitEmpoweredChannelDuration then
-		duration = UnitEmpoweredChannelDuration("player")
-	elseif channel then
-		duration = UnitChannelDuration("player")
-	else
-		duration = UnitCastingDuration("player")
-	end
-	if not Soul.Secret.Present(duration) then
-		Reveal(RB.cast, false)
-		return
-	end
-	local info, notInterruptible
-	if channel or empower then
-		info = { UnitChannelInfo("player") }
-		notInterruptible = info[7]
-	else
-		info = { UnitCastingInfo("player") }
-		notInterruptible = info[8]
-	end
-	RB.cast.Text:SetText(info[1] or "")
-	if Soul.Secret.Present(info[3]) and DB().cast.showIcon ~= false then
-		pcall(RB.cast.Icon.SetTexture, RB.cast.Icon, info[3])
-		RB.cast.Icon:Show()
-	end
-	local direction = Enum.StatusBarTimerDirection
-	local interp = Enum.StatusBarInterpolation
-	if not (bar.SetTimerDuration and direction and interp) then
-		Reveal(RB.cast, false)
-		return
-	end
-	local which
-	if channel or empower then
-		which = direction.RemainingTime
-	else
-		which = direction.ElapsedTime
-	end
-	local ok = pcall(bar.SetTimerDuration, bar, duration, interp.Immediate, which)
-	if not ok then
-		Reveal(RB.cast, false)
-		return
-	end
-	if bar.SetToTargetValue then bar:SetToTargetValue() end
-	local r, g, b = Soul:Accent()
-	local accent = CreateColor(r, g, b, 1)
-	local grey = CreateColor(0.45, 0.45, 0.48, 1)
-	local picked = Soul.Secret.PickColor(notInterruptible, accent, grey)
-	if picked and picked.GetRGB then
-		bar:SetStatusBarColor(picked:GetRGB())
-	else
-		bar:SetStatusBarColor(r, g, b)
-	end
-	local custom = DB().cast.color
-	if type(custom) == "table" then
-		bar:SetStatusBarColor(custom[1], custom[2], custom[3])
-	end
-	Soul.Secret.AlphaFromBool(RB.cast.Shield, notInterruptible, 1, 0)
-	Reveal(RB.cast, true)
-end
-
-local function RefreshCast()
-	if not DB().showCast then
-		Reveal(RB.cast, false)
-		return
-	end
-	local casting = UnitCastingInfo("player")
-	if Soul.Secret.Present(casting) then
-		ShowCast(false, false)
-		return
-	end
-	local channel = UnitChannelInfo("player")
-	if Soul.Secret.Present(channel) then
-		ShowCast(true, false)
-	else
-		Reveal(RB.cast, false)
-	end
-end
-
 local function UpdateGCD()
 	local db = DB()
 	Reveal(RB.gcd, db.showGCD and true or false)
@@ -381,15 +267,6 @@ local function UpdateGCD()
 	if bar.SetToTargetValue then bar:SetToTargetValue() end
 end
 
-local CAST_END = {
-	UNIT_SPELLCAST_STOP = true,
-	UNIT_SPELLCAST_FAILED = true,
-	UNIT_SPELLCAST_FAILED_QUIET = true,
-	UNIT_SPELLCAST_INTERRUPTED = true,
-	UNIT_SPELLCAST_CHANNEL_STOP = true,
-	UNIT_SPELLCAST_EMPOWER_STOP = true,
-}
-
 local function OnEvent(_, event)
 	if event == "RUNE_POWER_UPDATE" or event == "UPDATE_SHAPESHIFT_FORM" or event == "PLAYER_SPECIALIZATION_CHANGED" then
 		UpdatePips()
@@ -400,28 +277,9 @@ local function OnEvent(_, event)
 		UpdateGCD()
 		return
 	end
-	if CAST_END[event] then
-		Reveal(RB.cast, false)
+	if Soul.CastBar.IsCastEvent(event) then
+		RB.cast:HandleEvent(event)
 		UpdateGCD()
-		return
-	end
-	if event == "UNIT_SPELLCAST_START" then
-		ShowCast(false, false)
-		UpdateGCD()
-		return
-	end
-	if event == "UNIT_SPELLCAST_CHANNEL_START" then
-		ShowCast(true, false)
-		UpdateGCD()
-		return
-	end
-	if event == "UNIT_SPELLCAST_EMPOWER_START" then
-		ShowCast(true, true)
-		UpdateGCD()
-		return
-	end
-	if event and event:find("SPELLCAST", 1, true) then
-		RefreshCast()
 		return
 	end
 	UpdatePrimary()
@@ -441,13 +299,15 @@ function RB:Apply()
 		if key ~= "cast" and key ~= "pips" then
 			Reveal(frame, show and true or false)
 		end
+		if key == "cast" then
+			frame:Layout(cfg.height, cfg.showIcon ~= false, cfg.textSize or 0)
+		end
 	end
 	place(self.primary, "primary", db.primary, db.showPrimary)
 	place(self.pips, "pips", db.pips, db.showPips)
 	place(self.cast, "cast", db.cast, false)
 	place(self.gcd, "gcd", db.gcd, db.showGCD)
 	Soul:ShowBorder(self.primary, false)
-	Soul:ShowBorder(self.cast, false)
 	Soul:ShowBorder(self.gcd, false)
 	local r, g, b = Soul:Accent()
 	local gcdColor = db.gcd.color
@@ -455,7 +315,6 @@ function RB:Apply()
 		r, g, b = gcdColor[1], gcdColor[2], gcdColor[3]
 	end
 	self.gcd.Bar:SetStatusBarColor(r, g, b)
-	self.cast.Bar:SetStatusBarTexture(Soul:StatusbarTexture())
 	self.primary.Bar:SetStatusBarTexture(Soul:StatusbarTexture())
 	self.gcd.Bar:SetStatusBarTexture(Soul:StatusbarTexture())
 	for i = 1, MAX_PIPS do
@@ -465,16 +324,14 @@ function RB:Apply()
 	if primarySize <= 0 then primarySize = math.max(10, math.floor((db.primary.height or 12) * 0.9)) end
 	Soul:ApplyFont(self.primary.Text, primarySize, "OUTLINE")
 	self.primary.Text:SetShown(db.primary.showText ~= false)
-	local castSize = db.cast.textSize or 0
-	if castSize <= 0 then castSize = math.max(10, math.floor((db.cast.height or 16) * 0.6)) end
-	Soul:ApplyFont(self.cast.Text, castSize, "OUTLINE")
-	local castH = db.cast.height or 16
-	self.cast.Icon:SetSize(castH, castH)
-	self.cast.Icon:SetShown(db.cast.showIcon ~= false)
-	self.cast.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 	UpdatePrimary()
 	UpdatePips()
-	RefreshCast()
+	if self._castPreview and db.showCast then
+		self.cast:SetPreview(true)
+	else
+		if self.cast._preview then self.cast:SetPreview(false) end
+		self.cast:Refresh()
+	end
 	UpdateGCD()
 	if Soul.Blizz then Soul.Blizz.Refresh() end
 end
@@ -512,31 +369,28 @@ function RB:OnEnable()
 		gloss:SetColorTexture(1, 1, 1, 0.12)
 		gloss:Hide()
 		pip.gloss = gloss
-		local count = pip:CreateFontString(nil, "OVERLAY", nil, 7)
-		count:SetPoint("CENTER", pip, "CENTER", 0, 0)
-		count:SetTextColor(1, 1, 1)
-		count:SetAlpha(0)
-		pip.Count = count
 		self.pipBars[i] = pip
 	end
+	local countHost = CreateFrame("Frame", nil, self.pips)
+	countHost:SetAllPoints()
+	countHost:SetFrameLevel(self.pips:GetFrameLevel() + 20)
+	countHost:EnableMouse(false)
+	local countText = countHost:CreateFontString(nil, "OVERLAY")
+	countText:SetPoint("CENTER", countHost, "CENTER", 0, 0)
+	countText:SetJustifyH("CENTER")
+	countText:SetTextColor(1, 1, 1)
+	countText:SetShadowOffset(1, -1)
+	countText:SetShadowColor(0, 0, 0, 1)
+	Soul:ApplyFont(countText, 18, "OUTLINE")
+	self.pipCount = countText
 
-	self.cast = MakeBar("SoulUIResourceCast", db.cast.height)
-	local icon = self.cast:CreateTexture(nil, "ARTWORK")
-	icon:SetPoint("TOPRIGHT", self.cast, "TOPLEFT", -2, 0)
-	icon:SetSize(db.cast.height, db.cast.height)
-	self.cast.Icon = icon
-	local castText = self.cast.Bar:CreateFontString(nil, "OVERLAY")
-	Soul:ApplyFont(castText, 11, "OUTLINE")
-	castText:SetPoint("LEFT", 4, 0)
-	castText:SetPoint("RIGHT", -4, 0)
-	castText:SetJustifyH("LEFT")
-	castText:SetTextColor(1, 1, 1)
-	self.cast.Text = castText
-	local shield = self.cast:CreateTexture(nil, "OVERLAY", nil, 7)
-	shield:SetAllPoints()
-	shield:SetColorTexture(0.7, 0.7, 0.75, 0.35)
-	shield:SetAlpha(0)
-	self.cast.Shield = shield
+	self.cast = Soul.CastBar.New(UIParent, { name = "SoulUIResourceCast" })
+	self.cast:SetUnit("player")
+	self.cast.allowed = function() return DB().showCast and true or false end
+	self.cast.getColor = function()
+		local custom = DB().cast.color
+		if type(custom) == "table" then return custom[1], custom[2], custom[3] end
+	end
 
 	self.gcd = MakeBar("SoulUIResourceGCD", db.gcd.height)
 
@@ -598,6 +452,10 @@ function RB:OnEnable()
 				if info.key == "pips" then DB().pips.colorMode = "custom" end
 				RB:Apply()
 			end,
+			onEdit = info.key == "cast" and function(on)
+				RB._castPreview = on and DB().showCast and true or false
+				if RB._castPreview then RB.cast:SetPreview(true) else RB.cast:SetPreview(false) end
+			end or nil,
 			page = "resources",
 		})
 	end
