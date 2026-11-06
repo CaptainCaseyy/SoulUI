@@ -6,12 +6,14 @@ BigWigs, LittleWigs, and RaiderIO stay in charge of what they already do. SoulUI
 
 ## Install
 
-1. Download the latest release zip from the Releases page.
-2. Extract it into:
+The repo is https://github.com/CaptainCaseyy/SoulUI
+
+1. On that page, choose Code, then Download ZIP.
+2. Open the zip. Inside `SoulUI-main`, copy these folders into:
 
    `World of Warcraft\_retail_\Interface\AddOns`
 
-   You should see these folders next to each other, not nested inside another SoulUI folder:
+   Copy the folders themselves, not the outer `SoulUI-main` folder:
 
    - `SoulUI`
    - `SoulUI_ActionBars`
