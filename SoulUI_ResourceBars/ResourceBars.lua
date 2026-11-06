@@ -133,8 +133,9 @@ local function LayoutPips(count)
 			pip:SetPoint("TOPLEFT", tile, "TOPLEFT", inset, -inset)
 			pip:SetPoint("BOTTOMRIGHT", tile, "BOTTOMRIGHT", -inset, inset)
 			if pip.gloss then
-				pip.gloss:SetShown(cfg.gloss and true or false)
-				pip.gloss:SetHeight(math.max(2, math.floor(height * 0.4)))
+				pip.gloss:Show()
+				pip.gloss:SetAlpha(cfg.gloss and 0.22 or 0.1)
+				pip.gloss:SetHeight(math.max(2, math.floor(height * 0.42)))
 			end
 		else
 			tile:Hide()
@@ -228,24 +229,63 @@ local function UpdatePips()
 	PaintCount(spec.power)
 end
 
+-- Class pips are on screen when this spec actually has them. A guardian druid
+-- has no combo points, so the row is not "up" even though druids are a pip class.
+local function PipsAreUp()
+	local db = DB()
+	if not db.showPips then return false end
+	local spec = ClassSpec()
+	if not spec then return false end
+	if spec.mode == "runes" then return GetRuneCooldown and true or false end
+	return PipCount(spec) >= 1
+end
+
+-- "auto": the power bar stands in for shards when this spec has no class resource.
+-- "on" / "off": the player chose.
+local function PrimaryOn()
+	local db = DB()
+	local mode = db.primary and db.primary.mode
+	if mode == "on" then return true end
+	if mode == "off" then return false end
+	-- An older profile turned the bar on before "auto" existed.
+	if db.showPrimary then return true end
+	return not PipsAreUp()
+end
+
+function RB:PrimaryOn()
+	return PrimaryOn()
+end
+
 local function UpdatePrimary()
 	local db = DB()
-	Reveal(RB.primary, db.showPrimary and true or false)
-	if not db.showPrimary then return end
+	local on = PrimaryOn()
+	Reveal(RB.primary, on)
+	if not on then return end
 	local bar = RB.primary.Bar
 	local kind = UnitPowerType("player")
-	bar:SetStatusBarColor(Soul:PowerColor(kind))
-	local custom = db.primary.color
-	if type(custom) == "table" then
-		bar:SetStatusBarColor(custom[1], custom[2], custom[3])
+	if db.primary.colorMode == "custom" and type(db.primary.color) == "table" then
+		local c = db.primary.color
+		bar:SetStatusBarColor(c[1], c[2], c[3])
+	else
+		bar:SetStatusBarColor(Soul:PowerColor(kind))
 	end
 	bar:SetMinMaxValues(0, UnitPowerMax("player"))
 	bar:SetValue(UnitPower("player"))
+	local text = RB.primary.Text
+	if db.primary.showText == false then
+		text:SetText("")
+		return
+	end
+	local mode = db.primary.textMode or "number"
+	local value = UnitPower("player")
 	local curve = CurveConstants and CurveConstants.ScaleTo100
-	if curve and not Soul.Secret.IsSecret(kind) and type(kind) == "number" then
-		RB.primary.Text:SetFormattedText("%.0f", UnitPowerPercent("player", kind, true, curve))
+	local percent = curve and not Soul.Secret.IsSecret(kind) and type(kind) == "number" and UnitPowerPercent("player", kind, true, curve)
+	if mode == "percent" and percent then
+		pcall(text.SetFormattedText, text, "%.0f%%", percent)
+	elseif mode == "both" and percent then
+		pcall(text.SetFormattedText, text, "%d  %.0f%%", value, percent)
 	else
-		RB.primary.Text:SetText("")
+		pcall(text.SetFormattedText, text, "%d", value)
 	end
 end
 
@@ -268,9 +308,8 @@ local function UpdateGCD()
 end
 
 local function OnEvent(_, event)
-	if event == "RUNE_POWER_UPDATE" or event == "UPDATE_SHAPESHIFT_FORM" or event == "PLAYER_SPECIALIZATION_CHANGED" then
-		UpdatePips()
-		UpdatePrimary()
+	if event == "RUNE_POWER_UPDATE" or event == "UPDATE_SHAPESHIFT_FORM" or event == "PLAYER_SPECIALIZATION_CHANGED" or event == "PLAYER_ENTERING_WORLD" then
+		RB:Apply()
 		return
 	end
 	if event == "SPELL_UPDATE_COOLDOWN" then
@@ -286,9 +325,32 @@ local function OnEvent(_, event)
 	UpdatePips()
 end
 
+-- The first time focus, rage, fury or mana is the only resource, put that bar
+-- in the shard slot. A later drag is left alone.
+local function SeatPrimary()
+	local db = DB()
+	if not db.primary or db.primary.mode == "on" or db.primary.mode == "off" then return end
+	if not PrimaryOn() or db.primary.seated then return end
+	local profile = Soul:ActiveProfile()
+	local positions = profile and profile.unlock and profile.unlock.positions
+	local pipPos = positions and positions["ResourceBars:pips"]
+	if type(pipPos) ~= "table" then return end
+	db.primary.seated = true
+	db.primary.width = db.pips.width
+	db.primary.height = db.pips.height
+	db.primary.x = db.pips.x
+	db.primary.y = db.pips.y
+	local copy = {}
+	for key, value in pairs(pipPos) do
+		copy[key] = value
+	end
+	positions["ResourceBars:primary"] = copy
+end
+
 function RB:Apply()
 	RB._pipSig = nil
 	local db = DB()
+	SeatPrimary()
 	local width = db.width or 380
 	local function place(frame, key, cfg, show)
 		frame:SetWidth(cfg.width or width)
@@ -303,12 +365,25 @@ function RB:Apply()
 			frame:Layout(cfg.height, cfg.showIcon ~= false, cfg.textSize or 0)
 		end
 	end
-	place(self.primary, "primary", db.primary, db.showPrimary)
+	place(self.primary, "primary", db.primary, PrimaryOn())
 	place(self.pips, "pips", db.pips, db.showPips)
 	place(self.cast, "cast", db.cast, false)
 	place(self.gcd, "gcd", db.gcd, db.showGCD)
-	Soul:ShowBorder(self.primary, false)
+	Soul:ShowBorder(self.primary, db.primary.border ~= false)
 	Soul:ShowBorder(self.gcd, false)
+	local empty = db.primary.emptyColor
+	if self.primary.Bar.bg then
+		if type(empty) == "table" then
+			self.primary.Bar.bg:SetColorTexture(empty[1], empty[2], empty[3], 1)
+		else
+			self.primary.Bar.bg:SetColorTexture(0.17, 0.17, 0.17, 1)
+		end
+	end
+	if self.primary.Gloss then
+		local glossH = self.primary:GetHeight() or db.primary.height or 18
+		self.primary.Gloss:SetHeight(math.max(3, math.floor(glossH * 0.42)))
+		self.primary.Gloss:SetShown(db.primary.gloss ~= false)
+	end
 	local r, g, b = Soul:Accent()
 	local gcdColor = db.gcd.color
 	if type(gcdColor) == "table" then
@@ -321,7 +396,11 @@ function RB:Apply()
 		self.pipBars[i]:SetStatusBarTexture(Soul:StatusbarTexture())
 	end
 	local primarySize = db.primary.textSize or 0
-	if primarySize <= 0 then primarySize = math.max(10, math.floor((db.primary.height or 12) * 0.9)) end
+	local primaryH = db.primary.height or 18
+	if PrimaryOn() and (not db.primary.mode or db.primary.mode == "auto") then
+		primaryH = db.pips.height or primaryH
+	end
+	if primarySize <= 0 then primarySize = math.max(12, math.min(22, math.floor(primaryH * 0.55 + 0.5))) end
 	Soul:ApplyFont(self.primary.Text, primarySize, "OUTLINE")
 	self.primary.Text:SetShown(db.primary.showText ~= false)
 	UpdatePrimary()
@@ -344,10 +423,19 @@ function RB:OnEnable()
 	local db = DB()
 	self.primary = MakeBar("SoulUIResourcePrimary", db.primary.height)
 	local text = self.primary.Bar:CreateFontString(nil, "OVERLAY")
-	Soul:ApplyFont(text, 11, "OUTLINE")
-	text:SetPoint("RIGHT", -4, 0)
+	Soul:ApplyFont(text, 16, "OUTLINE")
+	text:SetPoint("CENTER", self.primary.Bar, "CENTER", 0, 0)
+	text:SetJustifyH("CENTER")
 	text:SetTextColor(1, 1, 1)
+	text:SetShadowColor(0, 0, 0, 1)
+	text:SetShadowOffset(1, -1)
 	self.primary.Text = text
+	local gloss = self.primary.Bar:CreateTexture(nil, "OVERLAY", nil, 1)
+	gloss:SetPoint("TOPLEFT")
+	gloss:SetPoint("TOPRIGHT")
+	gloss:SetHeight(math.max(3, math.floor((db.primary.height or 18) * 0.42)))
+	gloss:SetColorTexture(1, 1, 1, 0.14)
+	self.primary.Gloss = gloss
 
 	self.pips = CreateFrame("Frame", "SoulUIResourcePips", UIParent)
 	self.pips:SetHeight(db.pips.height)
@@ -425,8 +513,14 @@ function RB:OnEnable()
 			key = "ResourceBars:" .. info.key,
 			label = info.label,
 			getFrame = function() return info.frame end,
-			getEnabled = function() return DB()[info.flag] end,
+			getEnabled = function()
+				if info.key == "primary" then return PrimaryOn() end
+				return DB()[info.flag]
+			end,
 			setEnabled = function(on)
+				if info.key == "primary" then
+					DB().primary.mode = on and "on" or "off"
+				end
 				DB()[info.flag] = on and true or false
 				RB:Apply()
 			end,
@@ -434,10 +528,19 @@ function RB:OnEnable()
 				local cfg = DB()[info.key]
 				return { point = "CENTER", relPoint = "CENTER", x = cfg.x, y = cfg.y }
 			end,
-			onResize = function(width, height)
+			onResize = function(width, height, dir)
 				local cfg = DB()[info.key]
-				cfg.width = math.floor(width + 0.5)
-				cfg.height = math.floor(height + 0.5)
+				local minH = info.key == "gcd" and 1 or 4
+				local oldW = cfg.width or width
+				local oldH = cfg.height or height
+				if dir == 1 or dir == -1 then
+					cfg.width = Soul:ScaleStep(oldW, dir, 20, 900)
+					cfg.height = Soul:ScaleStep(oldH, dir, minH, 120)
+				else
+					cfg.width = Soul:QuantizeSize(oldW, width, nil, 20, 900)
+					cfg.height = Soul:QuantizeSize(oldH, height, nil, minH, 120)
+				end
+				if info.key == "primary" then cfg.mode = "on" end
 				RB:Apply()
 			end,
 			getColor = function()
@@ -445,7 +548,7 @@ function RB:OnEnable()
 				if type(cfg.color) == "table" then return cfg.color[1], cfg.color[2], cfg.color[3] end
 				if info.key == "pips" then return PipFill() end
 				if info.key == "gcd" then return Soul:Accent() end
-				return 0.2, 0.6, 1
+				return Soul:PowerColor(UnitPowerType("player"))
 			end,
 			setColor = function(r, g, b)
 				DB()[info.key].color = { r, g, b }

@@ -250,13 +250,8 @@ end
 -- Rows
 ------------------------------------------------------------------------------
 
-local function SetBar(row, value, instant)
-	local interp = not instant and Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.ExponentialEaseOut
-	if interp then
-		row.Bar:SetValue(value, interp)
-	else
-		row.Bar:SetValue(value)
-	end
+local function SetBar(row, value)
+	row.Bar:SetValue(value)
 end
 
 local function ClassColor(class)
@@ -787,9 +782,11 @@ function DM:StartTicker()
 		self._clock = nil
 	end
 	local gen = self._gen
+	-- Server events paint the bars. This ticker only covers a push that never
+	-- arrived, and it is never slower than 20 times a second. Older profiles
+	-- saved 0.25 (4 Hz); that value is treated as "as fast as the meter goes".
 	local rate = DB().refresh
-	if type(rate) ~= "number" or rate < 0.25 then rate = 0.25 end
-	if rate > 1 then rate = 1 end
+	if type(rate) ~= "number" or rate >= 0.2 or rate < 0.03 then rate = 0.05 end
 	self._ticker = C_Timer.NewTicker(rate, function()
 		if gen ~= DM._gen then return end
 		DM:RefreshAll()
@@ -799,7 +796,7 @@ function DM:StartTicker()
 			DM:StopTicker(gen)
 		end
 	end)
-	self._clock = C_Timer.NewTicker(0.5, function()
+	self._clock = C_Timer.NewTicker(0.1, function()
 		if gen ~= DM._gen then return end
 		DM:UpdateClocks()
 	end)
@@ -821,13 +818,6 @@ function DM:BeginCombat()
 	end
 	self:StartTicker()
 	self:RefreshAll()
-end
-
-local function RestoreCVar()
-	local saved = Soul.db and Soul.db.cvars and Soul.db.cvars.damageMeterEnabled
-	if saved and type(saved.original) == "string" and not InCombatLockdown() then
-		SetCVar("damageMeterEnabled", saved.original)
-	end
 end
 
 ------------------------------------------------------------------------------
@@ -973,10 +963,20 @@ function DM:Apply()
 				self.windows[i]:Hide()
 			end
 		end
-		RestoreCVar()
+		-- Leave damageMeterEnabled at 0. Putting Blizzard's meter back on
+		-- here does not unload until a reload, so the next "on" could not
+		-- show our windows until /reload.
 		return
 	end
+	local meterCVar = GetCVar("damageMeterEnabled")
 	Soul:SetOwnedCVar("damageMeterEnabled", "0", "DamageMeters")
+	if meterCVar == "1" then
+		if StaticPopupDialogs and StaticPopupDialogs.SOULUI_RELOAD and StaticPopup_Show then
+			StaticPopup_Show("SOULUI_RELOAD")
+		else
+			Soul:Print("Reload the UI (/reload) so the damage meters can take over again.")
+		end
+	end
 	local width = Soul.Pixel:Scale(db.width or 260)
 	local rowHeight, gap, rows, headerH = Geometry(db)
 	local stride = rowHeight + gap
@@ -1456,25 +1456,19 @@ function DM:OnEnable()
 				local cfg = DB().windows[index]
 				return { point = "CENTER", relPoint = "CENTER", x = cfg.x, y = cfg.y }
 			end,
-			onResize = function(width, height)
+			onResize = function(width, height, dir)
 				local db = DB()
 				local rows = db.rows or 6
 				if rows < 1 then rows = 1 end
 				local oldW = db.width or width
-				local gap = db.rowGap or 1
-				local oldH = (db.headerHeight or 22) + gap + rows * ((db.rowHeight or 18) + gap) - gap
-				if math_abs(width - oldW) < 3 and math_abs(height - oldH) < 3 then
-					local dir = 0
-					if width > oldW + 0.2 or height > oldH + 0.2 then dir = 1
-					elseif width < oldW - 0.2 or height < oldH - 0.2 then dir = -1 end
-					db.width = math_max(140, oldW + dir)
-					db.rowHeight = math_max(10, math_min(28, (db.rowHeight or 16) + dir))
+				local oldH = db.rowHeight or 18
+				if dir == 1 or dir == -1 then
+					db.width = Soul:ScaleStep(oldW, dir, 120, 500)
+					db.rowHeight = Soul:ScaleStep(oldH, dir, 10, 40)
 				else
-					db.width = math_max(140, math_floor(width + 0.5))
-					local rowH = math_floor((height - (db.headerHeight or 22)) / rows) - (db.rowGap or 1)
-					if rowH < 10 then rowH = 10 end
-					if rowH > 28 then rowH = 28 end
-					db.rowHeight = rowH
+					db.width = Soul:MatchSize(oldW, width, 120, 500)
+					local rowH = (height - (db.headerHeight or 22)) / rows - (db.rowGap or 1)
+					db.rowHeight = Soul:MatchSize(oldH, rowH, 10, 40)
 				end
 				DM:Apply()
 			end,
@@ -1531,11 +1525,11 @@ function DM:OnEnable()
 	for i = 1, 40 do
 		pcall(self.RegisterUnitEvent, self, "UNIT_FLAGS", OnUnitFlags, RAID_UNITS[i])
 	end
-	local function refreshIfIdle()
-		if not DM._ticker then DM:RefreshAll() end
+	local function onMeterData()
+		DM:RefreshAll()
 	end
-	self:RegisterEvent("DAMAGE_METER_COMBAT_SESSION_UPDATED", refreshIfIdle)
-	self:RegisterEvent("DAMAGE_METER_CURRENT_SESSION_UPDATED", refreshIfIdle)
+	self:RegisterEvent("DAMAGE_METER_COMBAT_SESSION_UPDATED", onMeterData)
+	self:RegisterEvent("DAMAGE_METER_CURRENT_SESSION_UPDATED", onMeterData)
 	self:RegisterEvent("DAMAGE_METER_RESET", function()
 		DM._pinned = nil
 		for i = 1, WINDOWS do

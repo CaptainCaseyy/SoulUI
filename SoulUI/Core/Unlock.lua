@@ -4,7 +4,7 @@ if SoulUI_Blocked then return end
 --
 --   drag            move (snaps to other elements, the screen center and the grid)
 --   shift + drag    lock to the axis you started moving along
---   mouse wheel     resize by one pixel step (elements that support resizing)
+--   mouse wheel     scale the element under the cursor (~6%, Shift 15%, Alt 1px)
 --   arrow keys      nudge the selected element 1 px (shift: 10 px)
 --   right-click     open that element's settings page
 --
@@ -16,7 +16,7 @@ if SoulUI_Blocked then return end
 -- Element contract (Soul:RegisterMover):
 --   key, label, getFrame()            required
 --   fallback() -> pos                 position when nothing is saved
---   onResize(w, h)                    write the new size into module settings
+--   onResize(w, h, dir)               write the new size. dir is 1, -1, or nil
 --   getColor() / setColor(r, g, b)    optional main color
 --   onEdit(on)                        edit mode opened / closed (previews)
 --   isHidden() -> bool                skip the mover entirely (not applicable)
@@ -184,12 +184,39 @@ local function FitMover(mover, frame)
 		return
 	end
 	local w, h = frame:GetWidth(), frame:GetHeight()
-	if (w or 0) < 4 or (h or 0) < 4 then
+	if not w or not h or w < 1 or h < 1 then
 		mover:SetPoint("CENTER", frame, "CENTER")
 		mover:SetSize(150, 26)
 	else
 		mover:SetAllPoints(frame)
 	end
+end
+
+-- The wheel belongs to the element the cursor is on. A hidden ghost loses to
+-- a real element. A huge holder loses to the smaller element on top of it.
+local function WheelMover()
+	local best, bestArea, bestGhost, bestLevel
+	for _, mover in pairs(Soul._moverFrames) do
+		local element = mover.element
+		if mover:IsShown() and element and element.onResize and mover:IsMouseOver() then
+			local ghost = mover._ghost and true or false
+			local w, h = mover:GetSize()
+			local area = (w or 0) * (h or 0)
+			local level = mover:GetFrameLevel() or 0
+			local take = false
+			if not best then
+				take = true
+			elseif bestGhost and not ghost then
+				take = true
+			elseif ghost == bestGhost and (area < bestArea or (area == bestArea and level > bestLevel)) then
+				take = true
+			end
+			if take then
+				best, bestArea, bestGhost, bestLevel = mover, area, ghost, level
+			end
+		end
+	end
+	return best
 end
 
 -- Rewrites pos.x / pos.y from where the frame sits now, keeping its anchor.
@@ -430,16 +457,24 @@ local function Select(mover)
 	local previous = selected
 	selected = mover
 	if previous and previous ~= mover and previous:IsShown() then PaintMover(previous) end
-	if mover then PaintMover(mover) end
+	if mover then
+		PaintMover(mover)
+		mover:SetFrameLevel(400)
+	end
+	for _, other in pairs(Soul._moverFrames) do
+		if other ~= mover and other:IsShown() then
+			other:SetFrameLevel(100)
+		end
+	end
 	if FillInspector then FillInspector() end
 end
 
-local function ApplySize(element, width, height)
+local function ApplySize(element, width, height, dir)
 	local frame = FrameOf(element)
 	if not frame or not element.onResize then return end
 	if width < 8 then width = 8 end
 	if height < 4 then height = 4 end
-	element.onResize(Soul.Pixel:Scale(width), Soul.Pixel:Scale(height))
+	element.onResize(width, height, dir)
 	if session then session.dirty = true end
 	local mover = Soul._moverFrames[element.key]
 	if mover then
@@ -448,14 +483,16 @@ local function ApplySize(element, width, height)
 	end
 end
 
-local function StepSize(value, dir)
+-- One wheel notch moves both sides by at least one UI pixel. A raw pixel
+-- step can be 0.4 at this client's scale, and the size math then rounds
+-- back to the number it already had.
+local function StepBox(value, dir)
 	local px = Soul.Pixel.mult or 1
-	for n = 1, 8 do
-		local nextValue = Soul.Pixel:Scale(value + dir * px * n)
-		if dir > 0 and nextValue > value + 0.05 then return nextValue end
-		if dir < 0 and nextValue < value - 0.05 then return nextValue end
-	end
-	return Soul.Pixel:Scale(value + dir * px * 4)
+	if px < 1 then px = 1 end
+	local nextValue = value + dir * px
+	if dir > 0 and nextValue < value + 1 then nextValue = value + 1 end
+	if dir < 0 and nextValue > value - 1 then nextValue = value - 1 end
+	return nextValue
 end
 
 local function OpenSettingsFor(element)
@@ -564,19 +601,19 @@ function Soul:ShowMover(key)
 				Select(self)
 			end
 		end)
-		mover:SetScript("OnMouseWheel", function(self, delta)
-			if InCombatLockdown() or not self.element.onResize then return end
-			local target = FrameOf(self.element)
+		mover:SetScript("OnMouseWheel", function(_, delta)
+			if InCombatLockdown() then return end
+			if Soul.Pixel then Soul.Pixel:Refresh() end
+			local hit = WheelMover()
+			if not hit or not hit.element or not hit.element.onResize then return end
+			local target = FrameOf(hit.element)
 			if not target then return end
-			Select(self)
+			Select(hit)
 			local dir = delta > 0 and 1 or -1
 			local w, h = target:GetWidth(), target:GetHeight()
-			if w < 1 then w = 1 end
-			local nw = StepSize(w, dir)
-			local nh = Soul.Pixel:Scale(h * (nw / w))
-			if dir < 0 and nh >= h - 0.05 then nh = StepSize(h, -1)
-			elseif dir > 0 and nh <= h + 0.05 then nh = StepSize(h, 1) end
-			ApplySize(self.element, nw, nh)
+			if not w or w < 1 then w = 8 end
+			if not h or h < 1 then h = 4 end
+			ApplySize(hit.element, StepBox(w, dir), StepBox(h, dir), dir)
 			FillInspector()
 		end)
 		self._moverFrames[key] = mover
@@ -627,7 +664,7 @@ local function EnsureToolbar()
 
 	local hint = UI.Text(toolbar.bar, 11, UI.C.dim, "RIGHT")
 	hint:SetPoint("RIGHT", -14, 0)
-	hint:SetText("Drag: move   Shift: lock axis   Alt: no snap   Wheel: resize   Arrows: nudge   Right-click: settings")
+	hint:SetText("Drag: move   Shift: lock axis   Alt: no snap   Wheel: scale (Shift larger, Alt 1px)   Arrows: nudge   Right-click: settings")
 
 	local row = CreateFrame("Frame", nil, toolbar)
 	row:SetPoint("TOPLEFT", 0, -40)
@@ -945,6 +982,7 @@ FillInspector = function()
 	if not inspector:IsShown() then
 		inspector:RestorePosition("TOPRIGHT", -60, -160)
 		inspector:Show()
+		if Soul.UI and Soul.UI.FadeIn then Soul.UI.FadeIn(inspector, 0.14) end
 	end
 	inspector.RefreshAll()
 end
@@ -982,12 +1020,15 @@ end
 ------------------------------------------------------------------------------
 
 local function ShowSession()
-	EnsureOverlay():Show()
+	local overlay = EnsureOverlay()
+	overlay:Show()
+	if Soul.UI and Soul.UI.FadeIn then Soul.UI.FadeIn(overlay, 0.16) end
 	DrawGrid()
 	local bar = EnsureToolbar()
 	bar:RestorePosition("TOP", 0, -30)
 	bar.Refresh()
 	bar:Show()
+	if Soul.UI and Soul.UI.FadeIn then Soul.UI.FadeIn(bar, 0.16) end
 	EnsureInspector()
 	EnsureKeys():Show()
 	for _, element in pairs(Soul._movers) do

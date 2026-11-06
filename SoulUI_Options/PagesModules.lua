@@ -550,6 +550,7 @@ local function GroupTab(kind)
 			set = function(v) cfg().rangeAlpha = v apply() end,
 		})
 		W.Row2(col, Toggle("targetHighlight", "Outline your target"), Toggle("hoverHighlight", "Outline on mouseover"))
+		W.Row(col, Toggle("tooltip", "Unit tooltip", "The normal game tooltip. RaiderIO adds its score on this tooltip."))
 		W.Row(col, {
 			type = "dropdown", label = "Dispel icons", width = 170, disabled = off,
 			items = { { value = "inside", label = "Inside the frame" }, { value = "above", label = "Above the frame" } },
@@ -804,7 +805,7 @@ local function BuildPips(col)
 	W.Section(col, "Count")
 	W.Row2(col, {
 		type = "toggle", label = "Show count", disabled = off,
-		tooltip = "The number on the last full tile, like the 3 on the third shard.",
+		tooltip = "One number, centered on the row.",
 		get = function() return p().showCount ~= false end,
 		set = function(v) p().showCount = Bool(v) ApplyRB() end,
 	}, {
@@ -859,27 +860,83 @@ local function BuildPower(col)
 	if Missing(col, "ResourceBars", "Resources") then return end
 	local function pw() return RB().primary end
 	local function g() return RB().gcd end
-	W.Section(col, "Primary power")
+	local function powerOn()
+		local mode = pw().mode
+		if mode == "on" then return true end
+		if mode == "off" then return false end
+		local mod = Soul:GetModule("ResourceBars")
+		if mod and mod.PrimaryOn then return mod:PrimaryOn() end
+		return RB().showPrimary and true or false
+	end
+	W.Note(col, "Focus, rage, energy, fury, mana and runic power. On a spec with no shards, combo points or runes, this bar sits in that slot on its own. Turn it off here if you do not want it.")
+	W.Section(col, "Power bar")
 	W.Row2(col, {
 		type = "toggle", label = "Enabled",
-		get = function() return RB().showPrimary end,
-		set = function(v) RB().showPrimary = Bool(v) ApplyRB() end,
+		tooltip = "Automatic on specs that have no class resource. Choosing on or off here sticks.",
+		get = function() return powerOn() end,
+		set = function(v)
+			pw().mode = v and "on" or "off"
+			RB().showPrimary = v and true or false
+			ApplyRB()
+		end,
 	}, {
-		type = "toggle", label = "Percent text",
-		disabled = function() return not RB().showPrimary end,
+		type = "dropdown", label = "Number", width = 160,
+		disabled = function() return not powerOn() end,
+		items = {
+			{ value = "number", label = "Current" },
+			{ value = "percent", label = "Percent" },
+			{ value = "both", label = "Current and percent" },
+		},
+		get = function() return pw().textMode or "number" end,
+		set = function(v) pw().textMode = v ApplyRB() end,
+	})
+	W.Row2(col, {
+		type = "toggle", label = "Show number",
+		disabled = function() return not powerOn() end,
 		get = function() return pw().showText ~= false end,
 		set = function(v) pw().showText = Bool(v) ApplyRB() end,
+	}, {
+		type = "toggle", label = "Border",
+		disabled = function() return not powerOn() end,
+		get = function() return pw().border ~= false end,
+		set = function(v) pw().border = Bool(v) ApplyRB() end,
 	})
 	W.Row2(col, {
 		type = "slider", label = "Width", min = 40, max = 800, step = 1,
-		disabled = function() return not RB().showPrimary end,
+		disabled = function() return not powerOn() end,
 		get = function() return pw().width end,
-		set = function(v) pw().width = v ApplyRB() end,
+		set = function(v) pw().width = v pw().mode = pw().mode or "on" ApplyRB() end,
 	}, {
-		type = "slider", label = "Height", min = 2, max = 40, step = 1,
-		disabled = function() return not RB().showPrimary end,
+		type = "slider", label = "Height", min = 8, max = 80, step = 1,
+		disabled = function() return not powerOn() end,
 		get = function() return pw().height end,
-		set = function(v) pw().height = v ApplyRB() end,
+		set = function(v) pw().height = v pw().mode = pw().mode or "on" ApplyRB() end,
+	})
+	W.Row2(col, {
+		type = "slider", label = "Number size (0 = auto)", min = 0, max = 36, step = 1,
+		disabled = function() return not powerOn() or pw().showText == false end,
+		get = function() return pw().textSize or 0 end,
+		set = function(v) pw().textSize = v ApplyRB() end,
+	}, {
+		type = "toggle", label = "Top gloss",
+		disabled = function() return not powerOn() end,
+		get = function() return pw().gloss ~= false end,
+		set = function(v) pw().gloss = Bool(v) ApplyRB() end,
+	})
+	W.Row(col, {
+		type = "color", label = "Fill color",
+		tooltip = "Leave this alone to use the power color (red rage, orange focus, gold energy). Picking a color overrides it.",
+		disabled = function() return not powerOn() end,
+		get = function()
+			local color = pw().color
+			if type(color) == "table" then return color[1], color[2], color[3] end
+			return Soul:PowerColor(UnitPowerType("player"))
+		end,
+		set = function(r, g, b)
+			pw().color = { r, g, b }
+			pw().colorMode = "custom"
+			ApplyRB()
+		end,
 	})
 	W.Section(col, "Global cooldown")
 	W.Row2(col, {
@@ -898,7 +955,7 @@ end
 Soul:RegisterPage({
 	key = "resources",
 	title = "Resources",
-	description = "Class resource (shards, combo points, runes...), player cast bar, power and GCD.",
+	description = "Shards, combo points and runes, or focus, rage, energy and mana when a spec has no class resource. Plus the player cast bar and GCD.",
 	group = "Combat",
 	groupOrder = 3,
 	order = 2,
@@ -1064,11 +1121,12 @@ local function BuildMeters(col)
 	})
 	W.Section(col, "Updates")
 	W.Row(col, {
-		type = "slider", label = "Updates per second", min = 1, max = 4, step = 1, disabled = off,
+		type = "slider", label = "Updates per second", min = 10, max = 30, step = 1, disabled = off,
+		tooltip = "The bars also repaint the moment the server sends new numbers. This is only the backup rate.",
 		get = function()
-			local rate = DMdb().refresh or 0.25
-			if type(rate) ~= "number" or rate <= 0 then return 4 end
-			return math.max(1, math.min(4, math.floor(1 / rate + 0.5)))
+			local rate = DMdb().refresh or 0.05
+			if type(rate) ~= "number" or rate >= 0.2 or rate <= 0 then return 20 end
+			return math.max(10, math.min(30, math.floor(1 / rate + 0.5)))
 		end,
 		set = function(v) DMdb().refresh = 1 / v ApplyDM() end,
 	})

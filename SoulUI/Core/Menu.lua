@@ -2,7 +2,13 @@ if SoulUI_Blocked or not SoulUI then return end
 
 local Soul = SoulUI
 
+-- Escape opens GameMenuFrame. SoulUI used to hang its own button under that
+-- frame, so it sat in the gap below the menu and did not line up with the
+-- other rows. The button is now the last row inside the menu, and the menu
+-- grows to cover it.
+
 local hooked = false
+local pending = false
 
 local function OpenFromMenu()
 	if GameMenuFrame and GameMenuFrame:IsShown() and HideUIPanel then
@@ -11,61 +17,95 @@ local function OpenFromMenu()
 	Soul:OpenOptions()
 end
 
-local function ManualButton(frame)
+local function EnsureButton(menu)
 	local button = _G.SoulUIGameMenuButton
 	if not button then
-		local created, made = pcall(CreateFrame, "Button", "SoulUIGameMenuButton", frame, "GameMenuButtonTemplate")
+		local created, made = pcall(CreateFrame, "Button", "SoulUIGameMenuButton", menu, "GameMenuButtonTemplate")
 		if created and made then
 			button = made
 		else
-			button = CreateFrame("Button", "SoulUIGameMenuButton", frame)
-			button:SetSize(196, 28)
+			button = CreateFrame("Button", "SoulUIGameMenuButton", menu)
 			local face = button:CreateTexture(nil, "BACKGROUND")
 			face:SetAllPoints()
-			face:SetColorTexture(0.12, 0.12, 0.14, 0.95)
-			local label = button:CreateFontString(nil, "OVERLAY")
-			Soul:ApplyFont(label, 14, "OUTLINE")
+			face:SetColorTexture(0, 0, 0, 0.25)
+			local label = button:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 			label:SetPoint("CENTER")
 			label:SetText("SoulUI")
-			label:SetTextColor(0, 0.93, 1)
-			button:SetScript("OnEnter", function() face:SetColorTexture(0, 0.35, 0.4, 1) end)
-			button:SetScript("OnLeave", function() face:SetColorTexture(0.12, 0.12, 0.14, 0.95) end)
+			button:SetScript("OnEnter", function() face:SetColorTexture(1, 1, 1, 0.08) end)
+			button:SetScript("OnLeave", function() face:SetColorTexture(0, 0, 0, 0.25) end)
 		end
 		if button.SetText then button:SetText("SoulUI") end
 		button:SetScript("OnClick", OpenFromMenu)
 	end
-	button:SetParent(UIParent)
-	button:SetFrameStrata(frame:GetFrameStrata() or "FULLSCREEN_DIALOG")
-	button:SetFrameLevel((frame:GetFrameLevel() or 1) + 20)
-	local width = (frame:GetWidth() or 220) - 40
-	if width < 150 then width = 180 end
-	button:SetSize(width, 28)
-	button:ClearAllPoints()
-	button:SetPoint("TOP", frame, "BOTTOM", 0, -6)
-	button:Show()
-	if not frame._soulMenuHide then
-		frame._soulMenuHide = true
-		frame:HookScript("OnHide", function()
-			if button then button:Hide() end
-		end)
+	if button:GetParent() ~= menu then
+		button:SetParent(menu)
 	end
 	return button
 end
 
-local function AddButton(frame)
-	if not frame or frame._soulButton then return end
-	if frame.AddButton then
-		local ok = pcall(frame.AddButton, frame, "SoulUI", OpenFromMenu)
-		if ok then
-			frame._soulButton = true
-			if frame.Layout then
-				pcall(frame.Layout, frame)
+-- The lowest wide button is the bottom row of the menu. The close box is
+-- small and is ignored so SoulUI does not hang off that.
+local function LowestRow(menu, ignore)
+	local lowest, bottom
+	local children = { menu:GetChildren() }
+	for i = 1, #children do
+		local child = children[i]
+		if child ~= ignore and child.IsShown and child:IsShown() and child.GetObjectType and child:GetObjectType() == "Button" then
+			local width = child.GetWidth and child:GetWidth() or 0
+			local childBottom = child.GetBottom and child:GetBottom()
+			if width > 100 and childBottom and (not bottom or childBottom < bottom) then
+				lowest = child
+				bottom = childBottom
 			end
-			return
 		end
 	end
-	ManualButton(frame)
-	frame._soulButton = true
+	return lowest
+end
+
+local function PlaceInMenu(menu)
+	if not menu or menu._soulPlacing then return end
+	menu._soulPlacing = true
+	local button = EnsureButton(menu)
+	local anchor = LowestRow(menu, button)
+	local width = (menu:GetWidth() or 230) - 46
+	local height = 28
+	if anchor then
+		local anchorWidth = anchor:GetWidth()
+		local anchorHeight = anchor:GetHeight()
+		if anchorWidth and anchorWidth > 40 then width = anchorWidth end
+		if anchorHeight and anchorHeight > 16 then height = anchorHeight end
+	end
+	if width < 140 then width = 140 end
+	button:SetSize(width, height)
+	button:ClearAllPoints()
+	if anchor then
+		button:SetPoint("TOP", anchor, "BOTTOM", 0, -1)
+	else
+		button:SetPoint("BOTTOM", menu, "BOTTOM", 0, 18)
+	end
+	button:Show()
+	-- Grow only by however much of the button is still outside the menu,
+	-- so a second layout pass does not keep stretching it.
+	local menuBottom = menu:GetBottom()
+	local buttonBottom = button:GetBottom()
+	if menuBottom and buttonBottom and buttonBottom < menuBottom + 10 then
+		menu:SetHeight((menu:GetHeight() or 0) + (menuBottom + 10 - buttonBottom) + 8)
+	end
+	menu._soulPlacing = false
+end
+
+local function Schedule(menu)
+	if not menu or menu._soulPlacing or pending then return end
+	pending = true
+	C_Timer.After(0, function()
+		pending = false
+		if menu:IsShown() then
+			PlaceInMenu(menu)
+		else
+			local button = _G.SoulUIGameMenuButton
+			if button then button:Hide() end
+		end
+	end)
 end
 
 local function InstallMenu()
@@ -87,24 +127,24 @@ local function InstallMenu()
 		hooked = true
 		if GameMenuFrameMixin and GameMenuFrameMixin.InitButtons then
 			hooksecurefunc(GameMenuFrameMixin, "InitButtons", function(self)
-				self._soulButton = nil
-				AddButton(self)
+				Schedule(self)
 			end)
 		end
 		if GameMenuFrame.Layout then
 			hooksecurefunc(GameMenuFrame, "Layout", function(self)
-				if not self._soulButton then
-					AddButton(self)
-				end
+				Schedule(self)
 			end)
 		end
 		GameMenuFrame:HookScript("OnShow", function(self)
-			ManualButton(self)
-			self._soulButton = true
+			Schedule(self)
+		end)
+		GameMenuFrame:HookScript("OnHide", function()
+			local button = _G.SoulUIGameMenuButton
+			if button then button:Hide() end
 		end)
 	end
 	if GameMenuFrame:IsShown() then
-		AddButton(GameMenuFrame)
+		Schedule(GameMenuFrame)
 	end
 end
 

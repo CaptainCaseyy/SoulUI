@@ -1,20 +1,20 @@
 if SoulUI_Blocked or not SoulUI then return end
 
--- Settings window (/soul), 0.6.0 layout. 1 unit = 1 pixel (times the window scale).
+-- Settings window (/soul), 0.7.2. 1 unit = 1 pixel (times the window scale).
+-- Deep navy shell. The accent color is the mark, the group labels, the
+-- selected-page bar, the streak under the title, and the controls.
 --
 --   +-------------------+------------------------------------------------------+
---   | <> SoulUI         |  Page title                 Window scale --o-- 100% [x] |  header (drag)
---   | ----------------- |  description                                           |
---   |  Edit Mode     >  |  Tab   Tab   Tab                        [search page] |  tabs
---   |  General          |------------------------------------------------------|
---   |  Profiles         |  live preview (optional)                             |
---   | [search all    ]  |------------------------------------------------------|
+--   | o SoulUI          |  Page title                                          [x] |
+--   |  o Edit Mode      |  description                          ~~~~streak~~~~ |
+--   |  General          |  Tab   Tab   Tab                        [search page] |
+--   |  Profiles         |------------------------------------------------------|
+--   | [search        ]  |  live preview (optional)                             |
 --   | Frames            |  SECTION                                             |
 --   |  Unit Frames    o |  label          control  |  label           control  |
---   |  ...              |  label          control  |  label           control  |
 --   | Combat            |                                                      |
 --   |  ...              |------------------------------------------------------|
---   | Profile  Default  |  [Reload UI] [Reset page]          [Edit Mode] [Close] |  footer
+--   | Default      v#   |  [Reset] [Reload UI]      Scale --o--     [Close]    |
 --   +-------------------+------------------------------------------------------+
 --
 -- Pages: Soul:RegisterPage{ key, title, description, group, groupOrder, order,
@@ -28,13 +28,14 @@ local UI = Soul.UI
 local W = Soul.Widgets
 Soul.Options = Soul.Options or {}
 
-local WIDTH, HEIGHT = 1180, 780
-local SIDEBAR = 240
-local HEADER = 92
-local TABS = 46
-local FOOTER = 64
+local WIDTH, HEIGHT = 1280, 840
+local SIDEBAR = 280
+local HEADER = 124
+local WHITE = "Interface\\Buttons\\WHITE8X8"
+local TABS = 52
+local FOOTER = 78
 local CONTENT_W = WIDTH - SIDEBAR
-local GUTTER = 36 -- content left/right inset, matches Widgets PAD
+local GUTTER = 48 -- content inset, matches Widgets PAD
 
 local panel = CreateFrame("Frame", "SoulUI_OptionsFrame", UIParent)
 panel:SetSize(WIDTH, HEIGHT)
@@ -46,37 +47,19 @@ panel:EnableMouse(true)
 panel:SetMovable(true)
 panel:Hide()
 
-local WHITE = "Interface\\Buttons\\WHITE8X8"
-
 local function Hairline(parent, layer)
 	local t = parent:CreateTexture(nil, layer or "ARTWORK")
 	t:SetColorTexture(UI.C.line[1], UI.C.line[2], UI.C.line[3], UI.C.line[4])
 	return t
 end
 
--- Surfaces: one base, a darker sidebar, a faint accent haze behind the header.
+-- Surfaces: navy content, a darker sidebar, a 1px frame.
 UI.Fill(panel, UI.C.panel, "BACKGROUND", -8)
-local haze = panel:CreateTexture(nil, "BACKGROUND", nil, -6)
-haze:SetPoint("TOPLEFT", SIDEBAR, 0)
-haze:SetPoint("TOPRIGHT")
-haze:SetHeight(HEADER + TABS + 40)
-haze:SetTexture(WHITE)
--- The outline sits on its own frame above the sidebar and content.
 local rim = CreateFrame("Frame", nil, panel)
 rim:SetAllPoints()
 rim:SetFrameLevel(panel:GetFrameLevel() + 20)
 rim:EnableMouse(false)
-local frameEdge = UI.Edge(rim, 1, 1, 1, 0.1, "OVERLAY")
-
-local function PaintChrome()
-	local r, g, b = Soul:Accent()
-	if haze.SetGradient and CreateColor then
-		haze:SetGradient("VERTICAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.075))
-	else
-		haze:SetVertexColor(r, g, b, 0.04)
-	end
-	frameEdge:SetColor(r, g, b, 0.3)
-end
+UI.Edge(rim, 1, 1, 1, 0.1, "OVERLAY")
 
 -- Drag the header or the sidebar brand to move the window.
 local function Mover(frame)
@@ -91,23 +74,18 @@ local function Mover(frame)
 	end)
 end
 
--- Search box: dark field, hairline, magnifier, placeholder.
+-- Search box: dark field, hairline, placeholder. No stock magnifier icon.
 local function SearchBox(parent, width, height, placeholder, size)
 	local box = CreateFrame("EditBox", nil, parent)
 	box:SetSize(width, height)
 	box:SetAutoFocus(false)
-	box:SetTextInsets(28, 10, 0, 0)
+	box:SetTextInsets(12, 10, 0, 0)
 	UI.SetFont(box, size or 13)
 	box:SetTextColor(UI.C.text[1], UI.C.text[2], UI.C.text[3])
-	UI.Fill(box, { 0, 0, 0, 0.32 })
+	UI.Fill(box, { 0, 0, 0, 0.45 })
 	box.edge = UI.Edge(box, 1, 1, 1, 0.1)
-	local icon = box:CreateTexture(nil, "OVERLAY")
-	icon:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
-	icon:SetSize(13, 13)
-	icon:SetPoint("LEFT", 9, -1)
-	icon:SetVertexColor(0.55, 0.57, 0.6)
 	box.hint = UI.Text(box, size or 13, UI.C.faint)
-	box.hint:SetPoint("LEFT", 28, 0)
+	box.hint:SetPoint("LEFT", 12, 0)
 	box.hint:SetText(placeholder)
 	return box
 end
@@ -126,60 +104,55 @@ sideRule:SetPoint("TOPRIGHT")
 sideRule:SetPoint("BOTTOMRIGHT")
 sideRule:SetWidth(1)
 
--- Brand: a diamond mark (rotated square with a dark core) and the name.
+-- A filled disc. The client mask makes it round; without the mask it stays a tile.
+local function Disc(parent, size, layer)
+	local tex = parent:CreateTexture(nil, layer or "ARTWORK")
+	tex:SetSize(size, size)
+	tex:SetColorTexture(1, 1, 1, 1)
+	if parent.CreateMaskTexture and tex.AddMaskTexture then
+		pcall(function()
+			local mask = parent:CreateMaskTexture()
+			mask:SetSize(size, size)
+			mask:SetPoint("CENTER", tex, "CENTER", 0, 0)
+			mask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+			tex:AddMaskTexture(mask)
+		end)
+	end
+	return tex
+end
+
+-- Ring with a stem, used as the module status mark. Not a button.
+local function PowerMark(parent)
+	local host = CreateFrame("Frame", nil, parent)
+	host:SetSize(15, 15)
+	host:EnableMouse(false)
+	local ring = Disc(host, 15, "ARTWORK")
+	ring:SetPoint("CENTER")
+	local hole = Disc(host, 9, "OVERLAY")
+	hole:SetPoint("CENTER")
+	hole:SetColorTexture(UI.C.sidebar[1], UI.C.sidebar[2], UI.C.sidebar[3], 1)
+	local stem = host:CreateTexture(nil, "OVERLAY", nil, 2)
+	stem:SetSize(2, 6)
+	stem:SetPoint("TOP", host, "TOP", 0, 1)
+	function host:SetColor(r, g, b, a)
+		ring:SetVertexColor(r, g, b, a or 1)
+		stem:SetColorTexture(r, g, b, a or 1)
+	end
+	return host
+end
+
+-- Brand: an accent disc and the name.
 local brand = CreateFrame("Frame", nil, sidebar)
 brand:SetPoint("TOPLEFT")
 brand:SetPoint("TOPRIGHT")
-brand:SetHeight(80)
+brand:SetHeight(88)
 Mover(brand)
--- A Line is a rectangle along its direction, so a 45-degree line as thick as
--- it is long draws a diamond.
-local markHost = CreateFrame("Frame", nil, brand)
-markHost:SetSize(26, 26)
-markHost:SetPoint("LEFT", 28, 0)
-local function Diamond(side, layer)
-	local half = side / (2 * math.sqrt(2))
-	local line = markHost:CreateLine(nil, layer)
-	line:SetThickness(side)
-	line:SetStartPoint("CENTER", markHost, -half, -half)
-	line:SetEndPoint("CENTER", markHost, half, half)
-	return line
-end
-local mark = Diamond(17, "ARTWORK")
-local markCore = Diamond(8, "OVERLAY")
-markCore:SetColorTexture(UI.C.sidebar[1], UI.C.sidebar[2], UI.C.sidebar[3], 1)
+local mark = Disc(brand, 28, "ARTWORK")
+mark:SetPoint("LEFT", 26, 0)
+UI.OnAccent(function(r, g, b) mark:SetVertexColor(r, g, b, 1) end)
 local brandName = UI.Text(brand, 24, UI.C.text)
-brandName:SetPoint("LEFT", markHost, "RIGHT", 12, 0)
+brandName:SetPoint("LEFT", mark, "RIGHT", 12, 0)
 brandName:SetText("SoulUI")
-
--- Glow rule under the brand: accent fading out to both ends.
-local ruleLeft = sidebar:CreateTexture(nil, "ARTWORK")
-ruleLeft:SetTexture(WHITE)
-ruleLeft:SetHeight(1)
-ruleLeft:SetPoint("TOPLEFT", 20, -80)
-ruleLeft:SetPoint("TOPRIGHT", sidebar, "TOP", 0, -80)
-local ruleRight = sidebar:CreateTexture(nil, "ARTWORK")
-ruleRight:SetTexture(WHITE)
-ruleRight:SetHeight(1)
-ruleRight:SetPoint("TOPLEFT", sidebar, "TOP", 0, -80)
-ruleRight:SetPoint("TOPRIGHT", -20, -80)
-local ruleGlow = sidebar:CreateTexture(nil, "ARTWORK", nil, -1)
-ruleGlow:SetTexture(WHITE)
-ruleGlow:SetSize(SIDEBAR - 80, 10)
-ruleGlow:SetPoint("BOTTOM", sidebar, "TOP", 0, -80)
-
-UI.OnAccent(function(r, g, b)
-	mark:SetColorTexture(r, g, b, 1)
-	if ruleLeft.SetGradient and CreateColor then
-		ruleLeft:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.9))
-		ruleRight:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0.9), CreateColor(r, g, b, 0))
-		ruleGlow:SetGradient("VERTICAL", CreateColor(r, g, b, 0.12), CreateColor(r, g, b, 0))
-	else
-		ruleLeft:SetVertexColor(r, g, b, 0.5)
-		ruleRight:SetVertexColor(r, g, b, 0.5)
-		ruleGlow:SetVertexColor(r, g, b, 0.05)
-	end
-end)
 
 -- Footer of the sidebar: active profile (click: Profiles page) and version.
 local profileRow = CreateFrame("Button", nil, sidebar)
@@ -192,14 +165,11 @@ profileRule:SetPoint("TOPRIGHT")
 profileRule:SetHeight(1)
 local profileHover = UI.Fill(profileRow, { 1, 1, 1, 0.035 })
 profileHover:Hide()
-local profileLabel = UI.Text(profileRow, 12, UI.C.faint)
-profileLabel:SetPoint("TOPLEFT", 24, -16)
-profileLabel:SetText("Profile")
-local profileName = UI.Text(profileRow, 15, UI.C.text)
-profileName:SetPoint("TOPLEFT", profileLabel, "BOTTOMLEFT", 0, -4)
-profileName:SetPoint("RIGHT", -60, 0)
-local versionText = UI.Text(profileRow, 12, UI.C.faint, "RIGHT")
-versionText:SetPoint("BOTTOMRIGHT", -20, 16)
+local profileName = UI.Text(profileRow, 14, UI.C.text)
+profileName:SetPoint("LEFT", 26, 8)
+profileName:SetPoint("RIGHT", -16, 8)
+local versionText = UI.Text(profileRow, 12, UI.C.faint, "LEFT")
+versionText:SetPoint("BOTTOMLEFT", 26, 14)
 versionText:SetText("v" .. (Soul.version or "?"))
 profileRow:SetScript("OnEnter", function() profileHover:Show() end)
 profileRow:SetScript("OnLeave", function() profileHover:Hide() end)
@@ -232,67 +202,82 @@ header:SetPoint("TOPLEFT")
 header:SetPoint("TOPRIGHT")
 header:SetHeight(HEADER)
 Mover(header)
-local pageTitle = UI.Text(header, 30, UI.C.text)
-pageTitle:SetPoint("TOPLEFT", GUTTER, -24)
+local pageTitle = UI.Text(header, 36, UI.C.text)
+pageTitle:SetPoint("TOPLEFT", GUTTER, -28)
 local pageDesc = UI.Text(header, 14, UI.C.dim)
-pageDesc:SetPoint("TOPLEFT", pageTitle, "BOTTOMLEFT", 1, -8)
-pageDesc:SetPoint("RIGHT", -380, 0)
+pageDesc:SetPoint("TOPLEFT", pageTitle, "BOTTOMLEFT", 0, -4)
+pageDesc:SetPoint("RIGHT", -64, 0)
 
-local close = UI.IconButton(header, "close", 30, function() Soul.Options.Close() end)
-close:SetPoint("TOPRIGHT", -18, -18)
-
--- Window scale lives in the header, next to close.
-local scaleValue = UI.Text(header, 13, UI.C.text, "RIGHT")
-scaleValue:SetPoint("RIGHT", close, "LEFT", -16, 0)
-scaleValue:SetWidth(40)
-local function PanelScaleSetting() return Soul.db and Soul.db.account.panelScale or 1 end
-local scaleSlider = UI.Slider(header, 110, 0.6, 1.6, 0.05, PanelScaleSetting, function(v)
-	Soul.db.account.panelScale = v
-	scaleValue:SetText(string.format("%d%%", math.floor(v * 100 + 0.5)))
-end)
-scaleSlider:SetPoint("RIGHT", scaleValue, "LEFT", -10, 0)
--- Applying the scale while dragging would move the slider under the cursor;
--- apply it when the mouse is released.
-scaleSlider:HookScript("OnMouseUp", function() panel:SetScale(UI.PanelScale()) end)
-scaleSlider:HookScript("OnMouseWheel", function() panel:SetScale(UI.PanelScale()) end)
-local scaleLabel = UI.Text(header, 13, UI.C.dim, "RIGHT")
-scaleLabel:SetPoint("RIGHT", scaleSlider, "LEFT", -12, 0)
-scaleLabel:SetText("Window scale")
+local close = UI.IconButton(header, "close", 28, function() Soul.Options.Close() end)
+close:SetPoint("TOPRIGHT", -16, -16)
 
 local tabBar = CreateFrame("Frame", nil, content)
 tabBar:SetPoint("TOPLEFT", header, "BOTTOMLEFT")
 tabBar:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT")
 tabBar:SetHeight(TABS)
-local tabRule = Hairline(tabBar)
-tabRule:SetPoint("BOTTOMLEFT")
-tabRule:SetPoint("BOTTOMRIGHT")
-tabRule:SetHeight(1)
+-- Accent streak along the top of the tab row, bright in the middle.
+local flareL = tabBar:CreateTexture(nil, "BACKGROUND", nil, -1)
+flareL:SetTexture(WHITE)
+flareL:SetHeight(3)
+flareL:SetPoint("TOPLEFT", 12, 0)
+flareL:SetPoint("TOP", tabBar, "TOP", 0, 0)
+local flareR = tabBar:CreateTexture(nil, "BACKGROUND", nil, -1)
+flareR:SetTexture(WHITE)
+flareR:SetHeight(3)
+flareR:SetPoint("TOP", tabBar, "TOP", 0, 0)
+flareR:SetPoint("TOPRIGHT", -12, 0)
+local bloom = tabBar:CreateTexture(nil, "BACKGROUND", nil, -2)
+bloom:SetTexture(WHITE)
+bloom:SetPoint("TOPLEFT", 28, 8)
+bloom:SetPoint("TOPRIGHT", -28, 8)
+bloom:SetHeight(64)
+UI.OnAccent(function(r, g, b)
+	if flareL.SetGradient and CreateColor then
+		flareL:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.95))
+		flareR:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0.95), CreateColor(r, g, b, 0))
+		bloom:SetGradient("VERTICAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.18))
+	else
+		flareL:SetVertexColor(r, g, b, 0.7)
+		flareR:SetVertexColor(r, g, b, 0.7)
+		bloom:SetVertexColor(r, g, b, 0.08)
+	end
+end)
 
-local pageSearch = SearchBox(tabBar, 240, 30, "Search this page", 13)
+local pageSearch = SearchBox(tabBar, 240, 34, "Search this page", 14)
 pageSearch:SetPoint("RIGHT", -GUTTER + 8, 2)
 
 local footer = CreateFrame("Frame", nil, content)
 footer:SetPoint("BOTTOMLEFT")
 footer:SetPoint("BOTTOMRIGHT")
 footer:SetHeight(FOOTER)
-UI.Fill(footer, { 0, 0, 0, 0.18 })
 local footRule = Hairline(footer)
 footRule:SetPoint("TOPLEFT")
 footRule:SetPoint("TOPRIGHT")
 footRule:SetHeight(1)
 
-local closeButton = UI.Button(footer, "Close", 136, 34, function() Soul.Options.Close() end, "outline")
+local closeButton = UI.Button(footer, "Close", 140, 40, function() Soul.Options.Close() end, "accent")
 closeButton:SetPoint("RIGHT", -GUTTER + 8, 0)
-local editButton = UI.Button(footer, "Edit Mode", 136, 34, function()
-	Soul.Options.Close()
-	Soul:OpenUnlock()
-end, "plain")
-editButton:SetPoint("RIGHT", closeButton, "LEFT", -10, 0)
-UI.Tip(editButton, "Edit Mode", "Move, resize, anchor and hide every SoulUI element on screen.")
-local reloadButton = UI.Button(footer, "Reload UI", 136, 34, function() ReloadUI() end, "plain")
+local reloadButton = UI.Button(footer, "Reload UI", 160, 40, function() ReloadUI() end, "well")
 reloadButton:SetPoint("LEFT", GUTTER - 8, 0)
-local resetButton = UI.Button(footer, "Reset page", 170, 34, function() end, "ghost")
+local resetButton = UI.Button(footer, "Reset page", 190, 40, function() end, "well")
 resetButton:SetPoint("LEFT", reloadButton, "RIGHT", 10, 0)
+
+-- Window scale sits in the footer so the page title has the header to itself.
+-- The scale is applied when the mouse is released, not while dragging.
+local function PanelScaleSetting() return Soul.db and Soul.db.account.panelScale or 1 end
+local scaleValue = UI.Text(footer, 12, UI.C.dim, "LEFT")
+scaleValue:SetWidth(40)
+local scaleSlider = UI.Slider(footer, 96, 0.6, 1.6, 0.05, PanelScaleSetting, function(v)
+	Soul.db.account.panelScale = v
+	scaleValue:SetText(string.format("%d%%", math.floor(v * 100 + 0.5)))
+end)
+scaleSlider:HookScript("OnMouseUp", function() panel:SetScale(UI.PanelScale()) end)
+scaleSlider:HookScript("OnMouseWheel", function() panel:SetScale(UI.PanelScale()) end)
+local scaleLabel = UI.Text(footer, 12, UI.C.faint, "RIGHT")
+scaleLabel:SetText("Scale")
+scaleSlider:SetPoint("CENTER", footer, "CENTER", 8, 0)
+scaleLabel:SetPoint("RIGHT", scaleSlider, "LEFT", -10, 0)
+scaleValue:SetPoint("LEFT", scaleSlider, "RIGHT", 10, 0)
 
 local previewHolder = CreateFrame("Frame", nil, content)
 previewHolder:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, 0)
@@ -301,14 +286,14 @@ previewHolder:SetHeight(1)
 previewHolder:SetClipsChildren(true)
 local previewBg = previewHolder:CreateTexture(nil, "BACKGROUND")
 previewBg:SetAllPoints()
-previewBg:SetColorTexture(0, 0, 0, 0.2)
+previewBg:SetColorTexture(1, 1, 1, 0.025)
 local previewRule = Hairline(previewHolder)
 previewRule:SetPoint("BOTTOMLEFT")
 previewRule:SetPoint("BOTTOMRIGHT")
 previewRule:SetHeight(1)
 local previewLabel = UI.Text(previewHolder, 11, UI.C.faint)
 previewLabel:SetPoint("TOPLEFT", GUTTER - 18, -10)
-previewLabel:SetText("PREVIEW")
+previewLabel:SetText("Preview")
 
 local scroll = CreateFrame("ScrollFrame", nil, content)
 scroll:SetPoint("TOPLEFT", previewHolder, "BOTTOMLEFT", 0, 0)
@@ -347,8 +332,7 @@ local function PaintThumb()
 	thumb:SetHeight(h)
 	thumb:ClearAllPoints()
 	thumb:SetPoint("TOPRIGHT", scroll, "TOPRIGHT", 8, -10 - travel * frac)
-	local r, g, b = Soul:Accent()
-	thumb:SetColorTexture(r, g, b, 0.8)
+	thumb:SetColorTexture(1, 1, 1, 0.28)
 	thumb:Show()
 	track:Show()
 end
@@ -453,21 +437,21 @@ local function PaintNav()
 			local on = key == activePage
 			row.bar:SetShown(on)
 			row.bar:SetColorTexture(r, g, b, 1)
-			row.glow:SetShown(on)
-			if row.glow.SetGradient and CreateColor then
-				row.glow:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0.16), CreateColor(r, g, b, 0.0))
+			row.wash:SetShown(on)
+			if row.wash.SetGradient and CreateColor then
+				row.wash:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0.22), CreateColor(r, g, b, 0))
 			else
-				row.glow:SetVertexColor(r, g, b, 0.08)
+				row.wash:SetVertexColor(r, g, b, 0.12)
 			end
+			local off = row.power and AddonOn(row.info.addon) == false
 			local c = on and UI.C.text or UI.C.dim
+			if off then c = UI.C.faint end
 			row.text:SetTextColor(c[1], c[2], c[3])
-			if row.dot then
-				local state = AddonOn(row.info.addon)
-				if state == false then
-					row.dot:SetColorTexture(1, 1, 1, 0.18)
-					row.text:SetTextColor(UI.C.faint[1], UI.C.faint[2], UI.C.faint[3])
+			if row.power then
+				if off then
+					row.power:SetColor(1, 1, 1, 0.22)
 				else
-					row.dot:SetColorTexture(r, g, b, on and 1 or 0.7)
+					row.power:SetColor(r, g, b, on and 1 or 0.72)
 				end
 			end
 		end
@@ -486,11 +470,11 @@ local function PaintTabs(info)
 		if not button then
 			button = CreateFrame("Button", nil, tabBar)
 			button:SetHeight(TABS)
-			button.text = UI.Text(button, 15, UI.C.dim, "CENTER")
-			button.text:SetPoint("CENTER", 0, 1)
+			button.text = UI.Text(button, 14, UI.C.dim, "CENTER")
+			button.text:SetPoint("CENTER", 0, 2)
 			button.line = button:CreateTexture(nil, "OVERLAY")
-			button.line:SetPoint("BOTTOMLEFT", -4, 0)
-			button.line:SetPoint("BOTTOMRIGHT", 4, 0)
+			button.line:SetPoint("BOTTOMLEFT", 0, 0)
+			button.line:SetPoint("BOTTOMRIGHT", 0, 0)
 			button.line:SetHeight(2)
 			button:SetScript("OnEnter", function(self)
 				if not self.on then self.text:SetTextColor(UI.C.text[1], UI.C.text[2], UI.C.text[3]) end
@@ -510,7 +494,7 @@ local function PaintTabs(info)
 		button.line:SetColorTexture(r, g, b, 1)
 		button.line:SetShown(button.on)
 		if button.on then
-			button.text:SetTextColor(1, 1, 1)
+			button.text:SetTextColor(UI.C.text[1], UI.C.text[2], UI.C.text[3])
 		else
 			button.text:SetTextColor(UI.C.dim[1], UI.C.dim[2], UI.C.dim[3])
 		end
@@ -539,19 +523,25 @@ function Soul.Options.Show(pageKey, tabKey)
 	end
 	local preview = Preview(info, tab)
 	if preview then
-		previewHolder:SetHeight(preview.height)
+		preview.frame:ClearAllPoints()
+		preview.frame:SetPoint("TOPLEFT", 0, -22)
+		preview.frame:SetPoint("TOPRIGHT", 0, -22)
 		preview.frame:SetHeight(preview.height)
+		previewHolder:SetHeight(preview.height + 44)
 		preview.frame:Show()
 	else
 		previewHolder:SetHeight(1)
 	end
-	previewLabel:SetShown(preview ~= nil)
+	previewLabel:Hide()
 	previewBg:SetShown(preview ~= nil)
 	previewRule:SetShown(preview ~= nil)
 	current = Build(info, tab)
 	current.col.onRefresh = preview and preview.update or nil
 	scroll:SetScrollChild(current.frame)
 	current.frame:Show()
+	if not panel._soulOpening then
+		UI.FadeIn(current.frame, 0.12)
+	end
 	W.Refresh(current.col)
 	ScrollTo(0, true)
 	if info.reset then
@@ -568,7 +558,7 @@ function Soul.Options.Show(pageKey, tabKey)
 	return current
 end
 
-local NAV_ROW = 34
+local NAV_ROW = 40
 
 local function NavRow(info, y)
 	local row = CreateFrame("Button", nil, nav)
@@ -576,25 +566,25 @@ local function NavRow(info, y)
 	row:SetPoint("TOPLEFT", 0, y)
 	row:SetPoint("TOPRIGHT", 0, y)
 	row.info = info
-	row.glow = row:CreateTexture(nil, "BACKGROUND")
-	row.glow:SetAllPoints()
-	row.glow:SetTexture(WHITE)
+	row.wash = row:CreateTexture(nil, "BACKGROUND")
+	row.wash:SetAllPoints()
+	row.wash:SetTexture(WHITE)
+	row.wash:Hide()
 	row.hover = row:CreateTexture(nil, "BACKGROUND", nil, 1)
 	row.hover:SetAllPoints()
-	row.hover:SetColorTexture(1, 1, 1, 0.035)
+	row.hover:SetColorTexture(1, 1, 1, 0.04)
 	row.hover:Hide()
 	row.bar = row:CreateTexture(nil, "ARTWORK")
 	row.bar:SetPoint("TOPLEFT")
 	row.bar:SetPoint("BOTTOMLEFT")
-	row.bar:SetWidth(2)
-	row.text = UI.Text(row, 15, UI.C.dim)
-	row.text:SetPoint("LEFT", 32, 0)
-	row.text:SetPoint("RIGHT", -34, 0)
+	row.bar:SetWidth(3)
+	row.text = UI.Text(row, 14, UI.C.dim)
+	row.text:SetPoint("LEFT", 28, 0)
+	row.text:SetPoint("RIGHT", -36, 0)
 	row.text:SetText(info.title)
 	if info.addon then
-		row.dot = row:CreateTexture(nil, "ARTWORK")
-		row.dot:SetSize(6, 6)
-		row.dot:SetPoint("RIGHT", -22, 0)
+		row.power = PowerMark(row)
+		row.power:SetPoint("RIGHT", -20, 0)
 		UI.Tip(row, info.title, function()
 			if AddonOn(info.addon) == false then return "Turned off. Turn it on under General > Modules." end
 			return info.description
@@ -607,20 +597,22 @@ local function NavRow(info, y)
 	return row
 end
 
--- The pinned action at the top: Edit Mode, with a chevron.
+-- Pinned at the top, the way Unlock sits above the module list.
 local function ActionRow(y)
 	local row = CreateFrame("Button", nil, nav)
 	row:SetHeight(NAV_ROW)
 	row:SetPoint("TOPLEFT", 0, y)
 	row:SetPoint("TOPRIGHT", 0, y)
-	local hover = UI.Fill(row, { 1, 1, 1, 0.035 })
+	local hover = row:CreateTexture(nil, "BACKGROUND")
+	hover:SetAllPoints()
+	hover:SetColorTexture(1, 1, 1, 0.04)
 	hover:Hide()
-	local text = UI.Text(row, 15, UI.C.dim)
-	text:SetPoint("LEFT", 32, 0)
+	local icon = Disc(row, 15, "ARTWORK")
+	icon:SetPoint("LEFT", 26, 0)
+	icon:SetVertexColor(UI.C.dim[1], UI.C.dim[2], UI.C.dim[3], 0.85)
+	local text = UI.Text(row, 14, UI.C.dim)
+	text:SetPoint("LEFT", icon, "RIGHT", 10, 0)
 	text:SetText("Edit Mode")
-	local chevron = UI.Glyph(row, "chevron-right", 12, UI.C.dim, 1.5)
-	chevron:SetPoint("RIGHT", -20, 0)
-	UI.OnAccent(function(r, g, b) chevron:SetColor(r, g, b, 1) end)
 	row:SetScript("OnEnter", function()
 		hover:Show()
 		text:SetTextColor(UI.C.text[1], UI.C.text[2], UI.C.text[3])
@@ -637,7 +629,7 @@ local function ActionRow(y)
 	return row
 end
 
-local search = SearchBox(nav, SIDEBAR - 40, 30, "Search all settings", 13)
+local search = SearchBox(nav, SIDEBAR - 48, 34, "Search settings", 14)
 
 local navBuilt = false
 local function BuildNav()
@@ -654,22 +646,22 @@ local function BuildNav()
 				if not searchPlaced then
 					searchPlaced = true
 					y = y - 12
-					search:SetPoint("TOPLEFT", 20, y)
-					y = y - 30 - 10
+					search:SetPoint("TOPLEFT", 24, y)
+					y = y - 34 - 16
 				end
-				y = y - 12
-				local group = UI.Text(nav, 14, UI.C.text)
+				y = y - 14
+				local group = UI.Text(nav, 13, UI.C.text)
 				group:SetText(info.group or "")
-				group:SetPoint("TOPLEFT", 24, y - 4)
+				group:SetPoint("TOPLEFT", 28, y - 2)
 				UI.OnAccent(function(r, g, b) group:SetTextColor(r, g, b, 1) end)
-				y = y - 26
+				y = y - 24
 			end
 		end
 		NavRow(info, y)
 		y = y - NAV_ROW
 	end
 	if not searchPlaced then
-		search:SetPoint("TOPLEFT", 20, y - 12)
+		search:SetPoint("TOPLEFT", 24, y - 16)
 		y = y - 54
 	end
 	nav:SetHeight(math.abs(y) + 12)
@@ -766,7 +758,7 @@ local function SearchChrome(box)
 	box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
 	box:SetScript("OnEditFocusGained", function(self)
 		local r, g, b = Soul:Accent()
-		self.edge:SetColor(r, g, b, 0.8)
+		self.edge:SetColor(r, g, b, 0.7)
 	end)
 	box:SetScript("OnEditFocusLost", function(self) self.edge:SetColor(1, 1, 1, 0.1) end)
 end
@@ -787,7 +779,6 @@ function Soul.Options.Open(_, pageKey)
 		navBuilt = true
 		BuildNav()
 	end
-	PaintChrome()
 	panel:SetScale(UI.PanelScale())
 	scaleSlider.Refresh()
 	scaleValue:SetText(string.format("%d%%", math.floor(PanelScaleSetting() * 100 + 0.5)))
@@ -798,15 +789,23 @@ function Soul.Options.Open(_, pageKey)
 	else
 		panel:SetPoint("CENTER", UIParent, "CENTER", 0, 20)
 	end
+	panel._soulOpening = true
 	panel:Show()
 	Soul.Options.Show(pageKey or activePage or (Soul.optionPages[1] and Soul.optionPages[1].key))
+	panel._soulOpening = nil
+	UI.FadeIn(panel, 0.18)
 end
 
 function Soul.Options.Close()
+	if panel._soulClosing then return end
 	UI.CloseMenu()
 	search:ClearFocus()
 	pageSearch:ClearFocus()
-	panel:Hide()
+	panel._soulClosing = true
+	UI.FadeOut(panel, 0.12, function()
+		panel._soulClosing = nil
+		panel:Hide()
+	end)
 end
 
 function Soul.Options.Toggle()
@@ -814,7 +813,6 @@ function Soul.Options.Toggle()
 end
 
 function Soul.Options.Refresh()
-	PaintChrome()
 	if current then W.Refresh(current.col) end
 	PaintNav()
 	if panel:IsShown() then

@@ -278,12 +278,7 @@ local function UpdateHealth(visual)
 		return
 	end
 	bar:SetMinMaxValues(0, UnitHealthMax(unit))
-	local interp = Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.ExponentialEaseOut
-	if interp then
-		bar:SetValue(UnitHealth(unit), interp)
-	else
-		bar:SetValue(UnitHealth(unit))
-	end
+	bar:SetValue(UnitHealth(unit))
 	ColorBar(bar, unit)
 	if visual._showPct then
 		local curve = CurveConstants and CurveConstants.ScaleTo100
@@ -690,11 +685,13 @@ function NP:AddPlate(_, unit)
 	end
 	visual.plate = plate
 	TakeOver(plate)
+	-- Only Blizzard's UnitFrame is faded. The nameplate itself stays, so a boss
+	-- mod can still attach icons to it. Our bar sits just above that frame.
 	visual:SetParent(plate)
 	visual:ClearAllPoints()
 	visual:SetPoint("CENTER", plate, "CENTER", 0, 0)
 	local level = plate:GetFrameLevel() or 1
-	visual:SetFrameLevel(level + 5)
+	visual:SetFrameLevel(level + 2)
 	-- Restyle only when settings changed or this plate's pixel size differs.
 	if visual._gen ~= styleGen or visual._px ~= PlatePixel(visual) then
 		ApplyStyle(visual)
@@ -769,6 +766,9 @@ function NP:Apply()
 	end
 	self:Rescan()
 	MarkTarget()
+	if self.LayoutSample and self.sample and self.sample:IsShown() then
+		self:LayoutSample()
+	end
 end
 
 function NP:OnInitialize()
@@ -812,17 +812,136 @@ function NP:OnEnable()
 		end
 	end)
 	self:RegisterEvent("PLAYER_ENTERING_WORLD", function(mod)
-		local plates = C_NamePlate.GetNamePlates()
-		if type(plates) ~= "table" then return end
 		-- Existing plates are not re-fired after a reload. Ask each one.
-		for i = 1, 40 do
-			local unit = "nameplate" .. i
-			if UnitExists(unit) then
-				mod:AddPlate(nil, unit)
-			end
-		end
+		-- GetNamePlates is not required; nameplate1..40 covers the same set
+		-- and does not throw if the nameplate API is missing.
+		if not C_NamePlate then return end
+		mod:Rescan()
 	end)
 	Soul:On("ProfileChanged", function() NP:Apply() end)
 	Soul:On("ThemeChanged", function() NP:Apply() end)
 	self:ApplyCVars()
+	-- PLAYER_ENTERING_WORLD can already have fired by the time this addon
+	-- enables. Scan whatever plates are on screen now, or the first login
+	-- shows no nameplates until the next zone.
+	self:Rescan()
+
+	-- Edit-mode sample. Dragging it does not move plates in the world.
+	-- Scrolling it changes the width, health height and cast height of every plate.
+	local sample = CreateFrame("Frame", "SoulUINameplateSample", UIParent)
+	sample:Hide()
+	sample:EnableMouse(false)
+	local sampleHealth = Soul:StatusBar(sample)
+	sampleHealth:SetStatusBarTexture(Soul:StatusbarTexture())
+	sampleHealth:SetMinMaxValues(0, 1)
+	sampleHealth:SetValue(0.72)
+	sampleHealth:SetStatusBarColor(0.85, 0.15, 0.15)
+	local sampleName = sampleHealth:CreateFontString(nil, "OVERLAY")
+	sampleName:SetPoint("LEFT", 4, 0)
+	sampleName:SetJustifyH("LEFT")
+	sampleName:SetTextColor(0.95, 0.95, 0.95)
+	sampleName:SetText("Nameplate")
+	local sampleCast = Soul.CastBar.New(sample, { enemy = true, name = "SoulUINameplateSampleCast" })
+	sampleCast.allowed = function() return false end
+
+	local function SizePixel()
+		for key, visual in pairs(byUnit) do
+			if key then return PlatePixel(visual) end
+		end
+		return PlatePixel(sample)
+	end
+
+	local function LayoutSample()
+		local cfg = DB()
+		local w = cfg.width or 140
+		local h = cfg.height or 16
+		local gap = cfg.spacing or 2
+		if gap < 0 then gap = 0 end
+		local showCast = cfg.showCast ~= false
+		local castH = showCast and (cfg.castHeight or 12) or 0
+		sampleHealth:ClearAllPoints()
+		sampleHealth:SetPoint("TOPLEFT")
+		sampleHealth:SetPoint("TOPRIGHT")
+		sampleHealth:SetHeight(h)
+		Soul:ApplyFont(sampleName, math.max(8, math.min(16, math.floor(h * 0.7 + 0.5))), "OUTLINE")
+		sampleCast:ClearAllPoints()
+		local stack = h
+		if showCast then
+			sampleCast:SetPoint("TOPLEFT", sampleHealth, "BOTTOMLEFT", 0, -gap)
+			sampleCast:SetPoint("TOPRIGHT", sampleHealth, "BOTTOMRIGHT", 0, -gap)
+			sampleCast:Layout(castH, cfg.castIcon ~= false, cfg.castFont or 0)
+			sampleCast:SetPreview(true)
+			stack = h + gap + (sampleCast:GetHeight() or castH)
+		else
+			sampleCast:SetPreview(false)
+			sampleCast:Hide()
+		end
+		sample:SetSize(w, stack)
+	end
+
+	local function GhostsOn()
+		local account = Soul.db and Soul.db.account
+		local edit = account and account.edit
+		if not edit or edit.ghosts == nil then return true end
+		return edit.ghosts and true or false
+	end
+
+	local function Restyle()
+		styleGen = styleGen + 1
+		for key, visual in pairs(byUnit) do
+			if key then ApplyStyle(visual) end
+		end
+		if sample:IsShown() then LayoutSample() end
+	end
+
+	NP.sample = sample
+	NP.LayoutSample = LayoutSample
+
+	Soul:RegisterMover({
+		key = "Nameplates:sample",
+		label = "Nameplates",
+		getFrame = function() return sample end,
+		getEnabled = function() return DB().enabled end,
+		setEnabled = function(on)
+			DB().enabled = on and true or false
+			NP:Apply()
+			if sample:IsShown() then LayoutSample() end
+		end,
+		fallback = function()
+			return { point = "CENTER", relPoint = "CENTER", x = 0, y = 220 }
+		end,
+		onResize = function(width, height, dir)
+			local cfg = DB()
+			local px = SizePixel()
+			local oldW = cfg.width or 140
+			local oldH = cfg.height or 16
+			local oldCast = cfg.castHeight or 12
+			if dir == 1 or dir == -1 then
+				cfg.width = Soul:ScaleStep(oldW, dir, 40, 300, px)
+				cfg.height = Soul:ScaleStep(oldH, dir, 4, 48, px)
+				if cfg.showCast ~= false then
+					cfg.castHeight = Soul:ScaleStep(oldCast, dir, 6, 40, px)
+				end
+			else
+				cfg.width = Soul:MatchSize(oldW, width, 40, 300, px)
+				local castH = cfg.showCast ~= false and oldCast or 0
+				local gap = cfg.spacing or 2
+				local healthH = height - castH - (castH > 0 and gap or 0)
+				cfg.height = Soul:MatchSize(oldH, healthH, 4, 48, px)
+			end
+			Restyle()
+		end,
+		onEdit = function(on)
+			if on and (DB().enabled or GhostsOn()) then
+				sample:Show()
+				LayoutSample()
+				Soul:Place(sample, "Nameplates:sample", {
+					point = "CENTER", relPoint = "CENTER", x = 0, y = 220,
+				})
+			else
+				sampleCast:SetPreview(false)
+				sample:Hide()
+			end
+		end,
+	})
 end

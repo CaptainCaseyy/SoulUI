@@ -303,9 +303,9 @@ local function PaintButton(btn)
 			if usable then
 				icon:SetVertexColor(1, 1, 1)
 			elseif not Soul.Secret.IsSecret(noPower) and noPower then
-				icon:SetVertexColor(0.35, 0.35, 0.9)
+				icon:SetVertexColor(0.45, 0.47, 0.55)
 			else
-				icon:SetVertexColor(0.4, 0.4, 0.4)
+				icon:SetVertexColor(0.40, 0.40, 0.42)
 			end
 		end
 	end
@@ -388,6 +388,8 @@ local function RefreshText(btn)
 		hotkey:SetPoint("TOPRIGHT", btn, "TOPRIGHT", -2, -2)
 		hotkey:SetJustifyH("RIGHT")
 		hotkey:SetTextColor(1, 1, 1)
+		hotkey:SetShadowColor(0, 0, 0, 1)
+		hotkey:SetShadowOffset(1, -1)
 		local command = btn._soulBind
 		local key = command and GetBindingKey(command)
 		hotkey:SetText(ShortKey(key))
@@ -403,6 +405,8 @@ local function RefreshText(btn)
 		btn.Count:SetJustifyH(anchor:find("LEFT") and "LEFT" or (anchor:find("RIGHT") and "RIGHT" or "CENTER"))
 		local cc = db.countColor
 		if type(cc) == "table" then btn.Count:SetTextColor(cc[1], cc[2], cc[3]) else btn.Count:SetTextColor(1, 1, 1) end
+		btn.Count:SetShadowColor(0, 0, 0, 1)
+		btn.Count:SetShadowOffset(1, -1)
 		btn.Count:SetShown(not cfg or cfg.showCount ~= false)
 	end
 	if btn.Name then
@@ -796,7 +800,7 @@ local function LayoutBar(def)
 				if type(color) == "table" then
 					btn._soulEmpty:SetColorTexture(color[1], color[2], color[3], emptyAlpha)
 				else
-					btn._soulEmpty:SetColorTexture(0.04, 0.04, 0.05, emptyAlpha)
+					btn._soulEmpty:SetColorTexture(0.11, 0.11, 0.12, emptyAlpha)
 				end
 			end
 			btn:Show()
@@ -826,13 +830,22 @@ local function CreateButton(def, pack, index)
 	end
 	local slot = def.paged and index or ((def.first or 1) + index - 1)
 	btn:SetID(0)
-	btn:SetAttribute("type", "action")
-	btn:SetAttribute("action", slot)
-	btn:SetAttribute("index", index)
-	btn:SetAttribute("useOnKeyDown", GetCVar("ActionButtonUseKeyDown") == "1")
+	local function SetAttr(key, value)
+		if InCombatLockdown() then
+			Soul:RunAfterCombat("ab-attr-" .. name .. key, function()
+				btn:SetAttribute(key, value)
+			end)
+			return
+		end
+		btn:SetAttribute(key, value)
+	end
+	SetAttr("type", "action")
+	SetAttr("action", slot)
+	SetAttr("index", index)
+	SetAttr("useOnKeyDown", GetCVar("ActionButtonUseKeyDown") == "1")
 	btn._soulBind = def.bind .. index
 	if def.paged then
-		btn:SetAttribute("_childupdate-page", CHILD_SNIPPET)
+		SetAttr("_childupdate-page", CHILD_SNIPPET)
 	end
 	btn:UnregisterAllEvents()
 	for i = 1, #LEAN do
@@ -869,7 +882,7 @@ local function CreateButton(def, pack, index)
 	end
 	local empty = btn:CreateTexture(nil, "BACKGROUND", nil, -8)
 	empty:SetAllPoints()
-	empty:SetColorTexture(0.04, 0.04, 0.05, 0.85)
+	empty:SetColorTexture(0.11, 0.11, 0.12, 1)
 	btn._soulEmpty = empty
 	local highlight = btn.GetHighlightTexture and btn:GetHighlightTexture()
 	if highlight then
@@ -897,9 +910,24 @@ local function CreateBar(def)
 	local pack = { holder = holder, bar = bar, buttons = {}, def = def }
 	if def.paged then
 		local main = _G.MainActionBar
-		if main then bar:SetFrameRef("MainActionBar", main) end
-		bar:SetAttribute("_onstate-page", PAGE_SNIPPET)
-		bar:SetAttribute("actionpage", 1)
+		if main and not InCombatLockdown() then
+			bar:SetFrameRef("MainActionBar", main)
+		elseif main then
+			Soul:RunAfterCombat("ab-ref-" .. def.key, function()
+				bar:SetFrameRef("MainActionBar", main)
+			end)
+		end
+		local function SetBarAttr(key, value)
+			if InCombatLockdown() then
+				Soul:RunAfterCombat("ab-bar-" .. def.key .. key, function()
+					bar:SetAttribute(key, value)
+				end)
+				return
+			end
+			bar:SetAttribute(key, value)
+		end
+		SetBarAttr("_onstate-page", PAGE_SNIPPET)
+		SetBarAttr("actionpage", 1)
 	end
 	for i = 1, 12 do
 		local btn = CreateButton(def, pack, i)
@@ -907,7 +935,13 @@ local function CreateBar(def)
 		pack.buttons[i] = btn
 	end
 	if def.paged then
-		RegisterStateDriver(bar, "page", PAGE_CONDITION)
+		if InCombatLockdown() then
+			Soul:RunAfterCombat("ab-page-" .. def.key, function()
+				RegisterStateDriver(bar, "page", PAGE_CONDITION)
+			end)
+		else
+			RegisterStateDriver(bar, "page", PAGE_CONDITION)
+		end
 	end
 	AB.bars[def.key] = pack
 	return pack
@@ -1015,26 +1049,19 @@ function AB:OnEnable()
 				local cfg = DB().bars[barKey]
 				return { point = "CENTER", relPoint = "CENTER", x = cfg.x, y = cfg.y }
 			end,
-			onResize = function(width, height)
+			onResize = function(width, height, dir)
 				local cfg = DB().bars[barKey]
-				local count, cols, rows, size, gap = Grid(cfg)
-				local currentW = cols * size + gap * math.max(0, cols - 1)
-				local currentH = rows * size + gap * math.max(0, rows - 1)
-				local fromW = (width - gap * math.max(0, cols - 1)) / cols
-				local fromH = (height - gap * math.max(0, rows - 1)) / rows
-				local nextSize = (fromW + fromH) / 2
-				if math.abs(nextSize - size) < 0.75 then
-					if width > currentW + 0.05 or height > currentH + 0.05 then
-						nextSize = size + 1
-					elseif width < currentW - 0.05 or height < currentH - 0.05 then
-						nextSize = size - 1
-					else
-						nextSize = size
-					end
+				local stored = cfg.size or 36
+				if dir == 1 or dir == -1 then
+					cfg.size = Soul:ScaleStep(stored, dir, 12, 72)
+				else
+					local count, cols, rows, size, gap = Grid(cfg)
+					if cols < 1 then cols = 1 end
+					if rows < 1 then rows = 1 end
+					local fromW = (width - gap * math.max(0, cols - 1)) / cols
+					local fromH = (height - gap * math.max(0, rows - 1)) / rows
+					cfg.size = Soul:MatchSize(stored, (fromW + fromH) / 2, 12, 72)
 				end
-				if nextSize < 12 then nextSize = 12 end
-				if nextSize > 72 then nextSize = 72 end
-				cfg.size = math.floor(nextSize + 0.5)
 				LayoutBar(def)
 			end,
 			getColor = function()

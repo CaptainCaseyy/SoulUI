@@ -97,7 +97,7 @@ local function Hook(frame)
 end
 
 local function SetParked(frame, park)
-	if not frame then return end
+	if not frame or Soul:IsForeignFrame(frame) then return end
 	Hook(frame)
 	wanted[frame] = park and true or nil
 	if park then Park(frame) else Unpark(frame) end

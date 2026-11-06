@@ -198,6 +198,11 @@ local function BlizzSet(key)
 	return function(v)
 		BlizzCfg()[key] = v and true or false
 		Soul.Blizz.Refresh()
+		-- The cooldown viewer frames are created when that addon loads. Turning
+		-- it on after login does not create them until a reload.
+		if key == "cooldownManager" and v and not _G.EssentialCooldownViewer then
+			StaticPopup_Show("SOULUI_RELOAD")
+		end
 	end
 end
 

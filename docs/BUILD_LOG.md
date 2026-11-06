@@ -2,6 +2,169 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-06 — laptop — 0.7.13 guild build, BigWigs and RaiderIO
+
+Shipped so the guild can install it from GitHub. BigWigs and LittleWigs keep their own bars. SoulUI will not park a frame whose name starts with BigWigs, LittleWigs, or RaiderIO. Enemy nameplates only fade Blizzard's unit frame, and the SoulUI bar sits just above that frame so a boss-mod icon on the plate can stay on top.
+
+Unit tooltips, including party and raid, use the normal game tooltip. Hiding it waits long enough for the cursor to move onto the tooltip or RaiderIO's panel. Party and raid have a Unit tooltip toggle, on by default.
+
+Files: `Core/Compat.lua`, `Core/Blizzard.lua`, `Nameplates.lua`, `UnitFrames.lua`, `GroupFrames.lua`, `Defaults.lua`, `PagesModules.lua`, `SoulUI.toc`, `README.md`.
+
+Not tested in game. Load with BigWigs, LittleWigs, and RaiderIO enabled. Hover a unit frame and a party frame and confirm the RaiderIO score is on the tooltip. Pull a boss and confirm BigWigs bars still show.
+
+## 2026-11-06 — laptop — 0.7.12 scroll scales by a percentage
+
+A one-pixel step on a wide bar was real, and still looked like the element had not moved. The wheel now scales by about 6%. Shift scales by about 15%. Alt is one pixel. Each notch still cannot land on the same physical pixel as the size it already had.
+
+The element under the cursor is the one that scales. A previously selected large frame no longer takes the wheel from a smaller element you are pointing at. A hidden ghost still loses to a real element.
+
+Files: `Core/Pixel.lua`, `Core/Unlock.lua`, `ActionBars.lua`, `UnitFrames.lua`, `GroupFrames.lua`, `ResourceBars.lua`, `DamageMeters.lua`, `Nameplates.lua`, `Core.lua`, tocs.
+
+Not tested in game. `/reload`, `/soul move`. Scroll a health bar and an action bar. The change should be obvious. Shift+wheel is a bigger jump. Alt+wheel is one pixel.
+
+## 2026-11-06 — laptop — 0.7.11 scroll scale, full pass
+
+Finished the scroll-to-scale pass. A notch was still able to do nothing, or to hit the wrong box.
+
+- The saved size now keeps stepping until the snapped size actually changes. Action bars, party, raid and meters snap to physical pixels, and a one-unit step can land on the same pixel.
+- The wheel goes to the element under the cursor. The selected element wins. A hidden ghost loses to a real element. A large party or raid holder loses to the smaller element on top of it. A cooldown viewer no longer swallows the wheel.
+- A bar shorter than 4px (the GCD) used to be replaced by a fixed 150x26 tag, so scrolling it did not show. The box now matches the real frame.
+- Typing or wheeling the inspector size on a multi-button bar moves the button size even when one pixel of the holder is only a fraction of a button.
+- Meter width and row height use the same limits as their sliders (120–500 and 10–40).
+- Nameplates are in edit mode. The sample sits above center. Scrolling it changes width, health height and cast height for every plate. Dragging it only moves the sample.
+- A size slider in the settings window takes the wheel on its whole row, not only the thin track.
+
+Files: `Core/Pixel.lua`, `Core/Unlock.lua`, `ActionBars.lua`, `GroupFrames.lua`, `DamageMeters.lua`, `Nameplates.lua`, `Options/Widgets.lua`, `Core.lua`, tocs.
+
+Not tested in game. `/reload`, `/soul move`. Scroll up and down on a health bar, an action bar, the shards, a meter, and the nameplate sample. Every notch should change that element, in both directions.
+
+## 2026-11-06 — laptop — 0.7.10 scroll scale always moves
+
+Scroll-to-scale dropped notches. A wheel step is often less than 1 UI unit at this client's scale, and the size math then rounded back to the number it already stored. Action bars, party, raid, and meters also compared that step to a reconstructed size that did not match the frame on screen, so the same notch sometimes grew the element and sometimes did nothing.
+
+Every notch now changes the stored size by exactly 1, taken from the saved number rather than the frame on screen. A health bar, cast, shard row, focus bar and GCD all do this. An action bar changes button size by 1. Party and raid change the cell by 1. A meter changes width and row height by 1. The selected element is drawn above the others. An overlay that cannot be resized (a cooldown viewer) no longer eats the wheel, so the element under it still scales.
+
+Files: `Core/Pixel.lua`, `Core/Unlock.lua`, `ActionBars.lua`, `UnitFrames.lua`, `GroupFrames.lua`, `ResourceBars.lua`, `DamageMeters.lua`, `Core.lua`, `SoulUI.toc`.
+
+Not tested in game. `/reload`, `/soul move`, scroll up and down on a health bar, an action bar, a shard row, and a meter. Every notch should change the size, both ways.
+
+## 2026-11-06 — laptop — 0.7.9 menu motion and loose badges
+
+The settings window, edit mode, and dropdowns appeared all at once. Opening the settings window now fades in. Closing it from the button fades out. Changing page fades the new page. Dropdowns fade in, and if the list would leave the bottom of the screen it opens upward instead. Edit mode fades the dim, the toolbar, and the inspector.
+
+The cast lock sat just outside the left of the bar, and the STUN badge sat just outside the right. Both now sit inside the bar, lock on the right and STUN on the left, so they are not floating in the gap beside the frame.
+
+Files: `Core/UIKit.lua`, `Core/Unlock.lua`, `Core/Casts.lua`, `Core/Core.lua`, `SoulUI_Options/Panel.lua`, tocs.
+
+Not tested in game. `/reload`, open `/soul`, change page, open a dropdown near the bottom of a page, and press Escape to confirm SoulUI is still a row inside the game menu.
+
+## 2026-11-06 — laptop — 0.7.8 escape menu row
+
+Pressing Escape showed SoulUI as its own button glued under the game menu, six pixels below the frame, parented to the screen. It did not share the menu's width, font, or rows.
+
+SoulUI is now the last wide row inside the game menu. It uses the same button template as the other rows, matches their width and height, and the menu grows by however much of that row would otherwise stick out. A second layout pass does not keep stretching the menu. Closing the menu hides the row.
+
+Files: `Core/Menu.lua`, `Core.lua`, `SoulUI.toc`.
+
+Not tested in game. Press Escape. SoulUI should be the bottom row inside the menu, not a strip floating under it. Clicking it closes the menu and opens `/soul`.
+
+## 2026-11-06 — laptop — 0.7.7 full functional pass
+
+Walked every module against `docs/research/midnight-api.md` and the other-addon notes. Fixes from this pass:
+
+- Nameplate login scan no longer calls `GetNamePlates()` (that throws if the API is missing) and no longer gives up when the return is not a table. It scans `nameplate1` through `nameplate40`.
+- The focus/rage bar only copies the shard position after that position exists. Marking it done first left the bar at the old 10px spot forever if layout had not written yet.
+- Group class color from a secret class token uses `GetRGB()` instead of `.r`/`.g`/`.b`, which are not always fields.
+- Unit-frame cast color no longer indexes `units[unit]` when that entry is missing.
+
+Already safe, left as they are: cast duration objects and the next-frame retry, health snaps, meter events plus the fast backup ticker, meter on/off without restoring `damageMeterEnabled`, secure group headers and action-button attributes deferred in combat, no combat log, secret checks before compares, aura containers instead of aura iteration, forbidden nameplates skipped.
+
+Not tested in game. `/reload`, then a dummy: health, cast, nameplate, bars, and one out-of-range party frame if grouped.
+
+## 2026-11-06 — laptop — 0.7.6 first-run functional fixes
+
+Checked the live paths against the Midnight notes. Four things would have failed on the first try:
+
+- Party and raid power bars skipped the update when `UnitPowerType` was secret, so the bar froze in combat. They now use `UnitPower` / `UnitPowerMax` with no type, which accept secrets.
+- Range fade branched on `UnitInRange`'s second return. That return is a secret boolean, and testing it throws. The fade now goes through `SetAlphaFromBoolean` only.
+- Nameplates were only collected on `PLAYER_ENTERING_WORLD`. If that event had already fired, the first login showed no plates until a zone change. Enable now scans the plates that are already up.
+- A reload in combat threw on the action buttons' secure attributes and aborted the whole bar module. Those attributes, the page driver, and the main-bar frame ref wait until combat ends.
+- A profile that had already turned the focus/rage bar on was treated as automatic and hidden again on a spec that has shards. An explicit on stays on.
+
+Cast bars, meters, unit health, and the secure group headers already follow the Midnight rules (duration objects, no combat log, no secret compares, headers configured out of combat).
+
+Files: `GroupFrames.lua`, `Nameplates.lua`, `ActionBars.lua`, `ResourceBars.lua`, `Core.lua`, those tocs.
+
+Not tested in game. `/reload` out of combat first. Then a target dummy: health, a cast, party range if grouped, and one nameplate.
+
+## 2026-11-06 — laptop — 0.7.5 power bar for specs without shards
+
+Specs with no class resource (hunter focus, warrior rage, demon hunter fury, priest mana, and a druid spec that has no combo points) had the power bar switched off, and the default bar was 10 pixels tall. That bar now stands in the shard slot: same width and height as the tiles, power-colored fill, gray empty, border, a light top edge, and a centered number. It turns on by itself until the player chooses on or off under Resources > Power & GCD. Changing spec or form rebuilds it, so a guardian druid gets rage and a feral druid gets combo points.
+
+Class tiles keep a faint top edge even when gloss is off. Action buttons: empty slots are a solid dark plate, keybinds and counts have a shadow, and a spell you cannot pay for tints gray instead of blue.
+
+Files: `ResourceBars.lua`, `Defaults` unchanged, `Units.lua` power colors, `ActionBars.lua`, `PagesModules.lua`, tocs, `Core.lua`.
+
+Not tested in game. `/reload` on a hunter or warrior, and on a warlock to confirm shards are unchanged. Resources > Power & GCD is the switch.
+
+## 2026-11-06 — laptop — 0.7.4 instant bars, meter toggle
+
+Health, nameplate, and party/raid bars were easing toward the new value (`ExponentialEaseOut`), so every hit looked late. They now snap. Cast bars retry a missing duration on the next frame instead of waiting 50ms, and the time text updates every hundredth of a second. Target-of-target casts are checked 20 times a second.
+
+Damage meters ignored server updates while their 4 Hz ticker was running, and the ticker refused to go faster than 4 Hz. They now repaint on `DAMAGE_METER_COMBAT_SESSION_UPDATED` and `DAMAGE_METER_CURRENT_SESSION_UPDATED`. The backup ticker is at least 20 Hz. Meter bars no longer ease.
+
+Turning the meters off restored `damageMeterEnabled`, which does not take effect until a reload, so turning them back on did nothing and never said so. The toggle now only hides or shows our windows and leaves that cvar at 0. If it is already 1 (an older toggle did that), turning the meters on asks for a reload. Turning on Blizzard's Cooldown Manager when its frames were never created asks for a reload too.
+
+The other module switches (unit frames, nameplates, party, raid, action bars, resources, each meter window) already apply live. Their other controls stay disabled while that piece is off, and the on/off switch itself stays clickable.
+
+Files: `Core/CastBar.lua`, `Core/Core.lua`, `UnitFrames.lua`, `Nameplates.lua`, `GroupFrames.lua`, `DamageMeters.lua`, `Pages.lua`, `PagesModules.lua`, and those tocs.
+
+Not tested in game. `/reload`. Cast, take damage, and toggle Damage Meters off and on without another reload.
+
+## 2026-11-06 — laptop — 0.7.3 settings layout, not another recolor
+
+0.7.2 recolored the existing window. The owner pointed out the structure had not changed. This pass changes the layout.
+
+- Window is 1280x840. Sidebar is 280. Header is 124. Footer is 78. Page inset is 48.
+- Sidebar rows are 40 tall. The brand mark is 28. Search fields are 34 tall.
+- Page title is 36. A preview sits in a padded stage instead of flush under the tabs.
+- Each settings section is a recessed block. Rows inside are 52 tall.
+- Two-column rows are two columns with a 36px gap. The center hairline is gone.
+- Dropdowns are 32px wells, number boxes are 30px, switches are 44x22, swatches are 36x26, slider tracks are 4px with a 10px thumb. The dropdown menu rows are 30 tall.
+
+Files: `Core/UIKit.lua`, `Core/Core.lua`, `SoulUI_Options/Panel.lua`, `SoulUI_Options/Widgets.lua`, both tocs.
+
+Not tested in game. `/reload`, then `/soul`. Open a page with two columns, such as Nameplates, and one with a preview.
+
+## 2026-11-06 — laptop — 0.7.2 settings window overhaul
+
+The owner posted the EllesmereUI settings window and asked for SoulUI's menu to be reminiscent of it. Own layout and own mark. No copied art.
+
+The window is now a deep navy shell.
+- Sidebar: accent disc and the SoulUI name, Edit Mode with a small mark, accent group labels, a 3px accent bar and a fading wash on the selected page, a ring on each module row.
+- Header: large title, then an accent streak across the tab row that fades at both ends.
+- Footer: dark Reset and Reload wells, solid accent Close. Edit Mode stays in the sidebar.
+- Slider thumbs are square. Section headings no longer sit on a line.
+
+Files: `Core/UIKit.lua`, `Core/Core.lua`, `SoulUI_Options/Panel.lua`, `SoulUI_Options/Widgets.lua`, both tocs.
+
+Not tested in game. `/reload`, then `/soul`. The disc and the rings use the client portrait mask; if that mask is missing they draw as tiles.
+
+## 2026-11-06 — laptop — 0.7.1 quieter settings window
+
+The owner re-read the suite after 0.7.0 and still found the settings window cheap. The accent color was doing the decorating: a glow behind the header, a colored frame, a diamond mark, fading rules, gradient nav rows, accent group titles, an accent scrollbar, and the stock search icon.
+
+The window is now neutral. The accent stays on controls and on the active tab mark.
+- Sidebar: a 7px square and the name, hairline, inset plate for the current page, uppercase group labels, a dot only when a module is off.
+- Header: title, description, close. Window scale moved to the footer.
+- Sections: a heading and a hairline, not a gray card.
+- Edit-mode windows drop the 2px accent stripe on the title bar.
+- The escape-menu fallback button is no longer cyan.
+
+Files: `Core/UIKit.lua`, `Core/Menu.lua`, `Core/Core.lua`, `SoulUI_Options/Panel.lua`, `SoulUI_Options/Widgets.lua`, both tocs. Other modules were not changed.
+
+Not tested in game. `/soul` after `/reload`.
+
 ## 2026-11-05 — laptop — 0.7.0 one cast bar for everything, proc glow, shard count, polish pass
 
 The owner tested 0.6.1 and reported problems:

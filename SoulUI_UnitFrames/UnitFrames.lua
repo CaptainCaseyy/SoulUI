@@ -163,13 +163,8 @@ local function UpdateHealth(frame)
 		bar:SetValue(1)
 		bar:SetStatusBarColor(GRAY_R, GRAY_G, GRAY_B)
 	else
-		local interp = Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.ExponentialEaseOut
 		bar:SetMinMaxValues(0, UnitHealthMax(unit))
-		if interp then
-			bar:SetValue(UnitHealth(unit), interp)
-		else
-			bar:SetValue(UnitHealth(unit))
-		end
+		bar:SetValue(UnitHealth(unit))
 		ColorHealth(bar, frame._soulKey, unit)
 	end
 	if gray then
@@ -388,17 +383,15 @@ end
 local function OnEnter(self)
 	self._soulHover = true
 	if DB().hoverHighlight ~= false then self.Hover:SetAlpha(1) end
-	if DB().tooltip ~= false and self._soulUnit and GameTooltip and UnitExists(self._soulUnit) then
-		GameTooltip_SetDefaultAnchor(GameTooltip, self)
-		GameTooltip:SetUnit(self._soulUnit)
-		GameTooltip:Show()
+	if DB().tooltip ~= false and self._soulUnit then
+		Soul:ShowUnitTooltip(self, self._soulUnit)
 	end
 end
 
 local function OnLeave(self)
 	self._soulHover = nil
 	self.Hover:SetAlpha(0)
-	if GameTooltip and GameTooltip:IsOwned(self) then GameTooltip:Hide() end
+	Soul:HideUnitTooltip(self)
 end
 
 local function CreateUnitFrame(unit, parent)
@@ -567,7 +560,8 @@ local function CreateUnitFrame(unit, parent)
 		return cfg and cfg.enabled and cfg.showCast and frame:IsShown() and true or false
 	end
 	cast.getColor = function()
-		local c = DB().units[unit].castColor
+		local cfg = DB().units[unit]
+		local c = cfg and cfg.castColor
 		if type(c) == "table" then return c[1], c[2], c[3] end
 	end
 	frame.Cast = cast
@@ -826,15 +820,19 @@ function UF:OnEnable()
 				local cfg = DB().units[unitKey]
 				return { point = "CENTER", relPoint = "CENTER", x = cfg.x, y = cfg.y }
 			end,
-			onResize = function(width, height)
+			onResize = function(width, height, dir)
 				local cfg = DB().units[unitKey]
 				local healthH = height
 				if cfg.showPower then
 					healthH = height - (cfg.powerHeight or 0)
 				end
-				if healthH < 10 then healthH = 10 end
-				cfg.width = math.floor(width + 0.5)
-				cfg.height = math.floor(healthH + 0.5)
+				if dir == 1 or dir == -1 then
+					cfg.width = Soul:ScaleStep(cfg.width or width, dir, 40, 800)
+					cfg.height = Soul:ScaleStep(cfg.height or healthH, dir, 8, 200)
+				else
+					cfg.width = Soul:QuantizeSize(cfg.width, width, nil, 40, 800)
+					cfg.height = Soul:QuantizeSize(cfg.height, healthH, nil, 8, 200)
+				end
 				UF:Layout(unitKey)
 			end,
 			getColor = function()
@@ -869,10 +867,17 @@ function UF:OnEnable()
 					relative = "UnitFrames:" .. unitKey,
 				}
 			end,
-			onResize = function(width, height)
+			onResize = function(width, height, dir)
 				local cfg = DB().units[unitKey]
-				cfg.castWidth = math.floor(width + 0.5)
-				cfg.castHeight = math.max(10, math.floor(height + 0.5))
+				local oldW = cfg.castWidth or cfg.width or width
+				local oldH = cfg.castHeight or 16
+				if dir == 1 or dir == -1 then
+					cfg.castWidth = Soul:ScaleStep(oldW, dir, 40, 800)
+					cfg.castHeight = Soul:ScaleStep(oldH, dir, 8, 80)
+				else
+					cfg.castWidth = Soul:QuantizeSize(oldW, width, nil, 40, 800)
+					cfg.castHeight = Soul:QuantizeSize(oldH, height, nil, 8, 80)
+				end
 				UF:Layout(unitKey)
 			end,
 			getColor = function()

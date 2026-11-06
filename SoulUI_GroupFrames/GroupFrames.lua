@@ -219,7 +219,10 @@ local function ClassColor(unit)
 	if IsSecret(class) then
 		if C_ClassColor and C_ClassColor.GetClassColor then
 			local color = C_ClassColor.GetClassColor(class)
-			if color then return color.r, color.g, color.b, true end
+			if color and color.GetRGB then
+				local r, g, b = color:GetRGB()
+				return r, g, b, true
+			end
 		end
 		return nil
 	end
@@ -572,18 +575,13 @@ local function UpdateHealth(button, unit, cfg)
 		button._soulState = nil
 		ColorHealth(button, unit, cfg)
 	end
-	local interp = Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.ExponentialEaseOut
 	local curve = CurveConstants and CurveConstants.ScaleTo100
 	local mode = cfg.healthText or "percent"
 	text:SetTextColor(0.92, 0.92, 0.92)
 	if curve then
 		local pct = UnitHealthPercent(unit, true, curve)
 		health:SetMinMaxValues(0, 100)
-		if interp then
-			health:SetValue(pct, interp)
-		else
-			health:SetValue(pct)
-		end
+		health:SetValue(pct)
 		if mode == "none" then
 			text:SetText("")
 		elseif mode == "deficit" and UnitHealthMissing then
@@ -593,11 +591,7 @@ local function UpdateHealth(button, unit, cfg)
 		end
 	else
 		health:SetMinMaxValues(0, UnitHealthMax(unit))
-		if interp then
-			health:SetValue(UnitHealth(unit), interp)
-		else
-			health:SetValue(UnitHealth(unit))
-		end
+		health:SetValue(UnitHealth(unit))
 		if mode == "none" then
 			text:SetText("")
 		else
@@ -628,12 +622,15 @@ local function UpdatePower(button, unit, cfg)
 	local curve = CurveConstants and CurveConstants.ScaleTo100
 	local kind = UnitPowerType(unit)
 	button.Power:SetStatusBarColor(Soul:PowerColor(kind))
+	-- UnitPowerType can be secret in combat. The bar still has to move:
+	-- UnitPower / UnitPowerMax with no type use the unit's current power
+	-- and accept secret values.
 	if not IsSecret(kind) and type(kind) == "number" and curve then
 		button.Power:SetMinMaxValues(0, 100)
 		button.Power:SetValue(UnitPowerPercent(unit, kind, true, curve))
-	elseif not IsSecret(kind) and type(kind) == "number" then
-		button.Power:SetMinMaxValues(0, UnitPowerMax(unit, kind))
-		button.Power:SetValue(UnitPower(unit, kind))
+	else
+		button.Power:SetMinMaxValues(0, UnitPowerMax(unit))
+		button.Power:SetValue(UnitPower(unit))
 	end
 end
 
@@ -653,15 +650,13 @@ local function UpdateRange(button, unit, cfg)
 		button:SetAlpha(1)
 		return
 	end
-	local inRange, checked = UnitInRange(unit)
-	if IsSecret(checked) or checked then
-		if not Soul.Secret.Present(inRange) then
-			button:SetAlpha(1)
-		else
-			Soul.Secret.AlphaFromBool(button, inRange, 1, faded)
-		end
-	else
+	-- UnitInRange is always a secret return. Branching on it throws.
+	-- One value is enough: missing means "not a checked unit", so stay solid.
+	local inRange = UnitInRange(unit)
+	if not Soul.Secret.Present(inRange) then
 		button:SetAlpha(1)
+	else
+		Soul.Secret.AlphaFromBool(button, inRange, 1, faded)
 	end
 end
 
@@ -727,12 +722,18 @@ end
 
 local function OnEnter(self)
 	local cfg = self._soulCfg
-	if cfg and cfg.hoverHighlight == false then return end
-	self.HoverFrame:SetAlpha(1)
+	if not cfg or cfg.hoverHighlight ~= false then
+		self.HoverFrame:SetAlpha(1)
+	end
+	local unit = self.GetAttribute and self:GetAttribute("unit")
+	if cfg and cfg.tooltip ~= false and unit then
+		Soul:ShowUnitTooltip(self, unit)
+	end
 end
 
 local function OnLeave(self)
 	self.HoverFrame:SetAlpha(0)
+	Soul:HideUnitTooltip(self)
 end
 
 local function StyleButton(button, cfg)
@@ -1226,32 +1227,23 @@ function GF:OnEnable()
 
 	local function GroupEdit(kind, across, down)
 		return {
-			onResize = function(width, height)
+			onResize = function(width, height, dir)
 				local cfg = DB()[kind]
-				local across, down = across, down
-				-- A vertical party is one column of five.
+				local columns, rows = across, down
 				if kind == "party" and (cfg.orientation or "vertical") == "vertical" then
-					across, down = 1, 5
+					columns, rows = 1, 5
 				end
-				local gap = cfg.spacing or 2
-				local currentW = cfg.width * across + gap * math.max(0, across - 1)
-				local currentH = cfg.height * down + gap * math.max(0, down - 1)
-				if math.abs(width - currentW) < 3 and math.abs(height - currentH) < 3 then
-					if math.abs(width - currentW) >= math.abs(height - currentH) then
-						if width > currentW then cfg.width = cfg.width + 1
-						elseif width < currentW then cfg.width = math.max(40, cfg.width - 1) end
-					elseif height > currentH then
-						cfg.height = cfg.height + 1
-					elseif height < currentH then
-						cfg.height = math.max(16, cfg.height - 1)
-					end
+				local oldW = cfg.width or 80
+				local oldH = cfg.height or 36
+				if dir == 1 or dir == -1 then
+					cfg.width = Soul:ScaleStep(oldW, dir, 40, 400)
+					cfg.height = Soul:ScaleStep(oldH, dir, 16, 200)
 				else
-					local buttonW = (width - gap * math.max(0, across - 1)) / across
-					local buttonH = (height - gap * math.max(0, down - 1)) / down
-					if buttonW < 40 then buttonW = 40 end
-					if buttonH < 16 then buttonH = 16 end
-					cfg.width = math.floor(buttonW + 0.5)
-					cfg.height = math.floor(buttonH + 0.5)
+					local gap = cfg.spacing or 2
+					local buttonW = (width - gap * math.max(0, columns - 1)) / columns
+					local buttonH = (height - gap * math.max(0, rows - 1)) / rows
+					cfg.width = Soul:MatchSize(oldW, buttonW, 40, 400)
+					cfg.height = Soul:MatchSize(oldH, buttonH, 16, 200)
 				end
 				GF:Apply("all")
 			end,

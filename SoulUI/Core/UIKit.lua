@@ -2,11 +2,11 @@ if SoulUI_Blocked then return end
 
 -- Shared look for SoulUI's own chrome: the settings panel (SoulUI_Options) and
 -- edit mode (Unlock.lua) are both built from these pieces so they match.
--- Style (0.6.0): cool near-black surfaces, every gray is white-plus-alpha, one
--- accent color (theme accent), 1 physical pixel hairlines, square controls,
--- icons drawn with Line objects (no letters standing in for icons), and one
--- condensed UI font (account.uiFont, default bundled Barlow) separate from the
--- font used on unit frames. Panels run at 1 unit = 1 pixel.
+-- Style (0.7.2): deep navy surfaces. The accent color marks the logo, the
+-- sidebar groups, the selected page, the header streak, and the controls.
+-- Hairlines are 1 physical pixel. Icons are Line objects. The settings window
+-- and edit mode use the UI font (account.uiFont, default bundled Barlow),
+-- separate from the font on unit frames. Panels run at 1 unit = 1 pixel.
 
 local Soul = SoulUI
 local UI = {}
@@ -15,14 +15,14 @@ Soul.UI = UI
 local WHITE = "Interface\\Buttons\\WHITE8X8"
 
 UI.C = {
-	panel = { 0.047, 0.055, 0.063, 0.97 },
-	band = { 0.062, 0.071, 0.080, 1 },
-	sidebar = { 0.033, 0.039, 0.045, 1 },
-	control = { 0.0, 0.0, 0.0, 0.32 },
-	controlHover = { 1, 1, 1, 0.06 },
-	text = { 0.92, 0.93, 0.94 },
-	dim = { 0.62, 0.64, 0.67 },
-	faint = { 0.42, 0.44, 0.47 },
+	panel = { 0.024, 0.036, 0.048, 0.98 },
+	band = { 0.032, 0.046, 0.060, 1 },
+	sidebar = { 0.014, 0.022, 0.031, 1 },
+	control = { 0.0, 0.0, 0.0, 0.42 },
+	controlHover = { 1, 1, 1, 0.05 },
+	text = { 0.95, 0.96, 0.97 },
+	dim = { 0.62, 0.67, 0.72 },
+	faint = { 0.40, 0.46, 0.52 },
 	line = { 1, 1, 1, 0.07 },
 }
 
@@ -123,6 +123,53 @@ end
 Soul:On("ThemeChanged", function() UI.RefreshAccent() end)
 Soul:On("ProfileChanged", function() UI.RefreshAccent() end)
 
+-- Short ease-out fade. Does not move the frame, so a saved position stays put.
+function UI.FadeIn(frame, seconds)
+	if not frame then return end
+	seconds = seconds or 0.16
+	frame._soulFadeGen = (frame._soulFadeGen or 0) + 1
+	local gen = frame._soulFadeGen
+	frame:SetAlpha(0)
+	local elapsed = 0
+	frame:SetScript("OnUpdate", function(self, dt)
+		if self._soulFadeGen ~= gen then return end
+		elapsed = elapsed + dt
+		local p = elapsed / seconds
+		if p >= 1 then
+			self:SetAlpha(1)
+			self:SetScript("OnUpdate", nil)
+			return
+		end
+		self:SetAlpha(1 - (1 - p) * (1 - p))
+	end)
+end
+
+function UI.FadeOut(frame, seconds, onDone)
+	if not frame then return end
+	if not frame:IsShown() then
+		if onDone then onDone() end
+		return
+	end
+	seconds = seconds or 0.12
+	frame._soulFadeGen = (frame._soulFadeGen or 0) + 1
+	local gen = frame._soulFadeGen
+	local start = frame:GetAlpha() or 1
+	if start <= 0 then start = 1 end
+	local elapsed = 0
+	frame:SetScript("OnUpdate", function(self, dt)
+		if self._soulFadeGen ~= gen then return end
+		elapsed = elapsed + dt
+		local p = elapsed / seconds
+		if p >= 1 then
+			self:SetScript("OnUpdate", nil)
+			self:SetAlpha(1)
+			if onDone then onDone() end
+			return
+		end
+		self:SetAlpha(start * (1 - p) * (1 - p))
+	end)
+end
+
 function UI.PanelScale()
 	local eff = UIParent:GetEffectiveScale()
 	local perfect = Soul.Pixel and Soul.Pixel.perfect or 1
@@ -215,11 +262,6 @@ function UI.Window(name, title, width, height, opts)
 	bar:EnableMouse(true)
 	bar:RegisterForDrag("LeftButton")
 	UI.Fill(bar, UI.C.band)
-	local accentLine = bar:CreateTexture(nil, "ARTWORK")
-	accentLine:SetPoint("TOPLEFT")
-	accentLine:SetPoint("TOPRIGHT")
-	accentLine:SetHeight(2)
-	UI.OnAccent(function(r, g, b) accentLine:SetColorTexture(r, g, b, 1) end)
 	local divider = bar:CreateTexture(nil, "ARTWORK")
 	divider:SetPoint("BOTTOMLEFT")
 	divider:SetPoint("BOTTOMRIGHT")
@@ -323,6 +365,10 @@ function UI.Button(parent, label, width, height, onClick, style)
 			face:SetColorTexture(r, g, b, hovered and 0.16 or 0.04)
 			outline:SetColor(r, g, b, hovered and 1 or 0.7)
 			text:SetTextColor(hovered and 1 or r, hovered and 1 or g, hovered and 1 or b)
+		elseif style == "well" then
+			face:SetColorTexture(0, 0, 0, hovered and 0.5 or 0.38)
+			outline:SetColor(1, 1, 1, hovered and 0.2 or 0.1)
+			text:SetTextColor(UI.C.text[1], UI.C.text[2], UI.C.text[3])
 		elseif style == "danger" then
 			face:SetColorTexture(hovered and 0.45 or 0.3, 0.08, 0.08, 1)
 			outline:SetColor(1, 0.3, 0.3, 0.35)
@@ -349,19 +395,19 @@ end
 -- Switch: square track with a hairline, square knob. get() -> bool, set(bool).
 function UI.Switch(parent, get, set)
 	local button = CreateFrame("Button", nil, parent)
-	button:SetSize(38, 20)
+	button:SetSize(44, 22)
 	local track = button:CreateTexture(nil, "BACKGROUND")
 	track:SetAllPoints()
 	local edge = UI.Edge(button, 1, 1, 1, 0.16)
 	local knob = button:CreateTexture(nil, "ARTWORK")
-	knob:SetSize(14, 14)
+	knob:SetSize(16, 16)
 	local pos = 0
 	local function Place(target, animate)
 		button:SetScript("OnUpdate", nil)
 		if not animate then
 			pos = target
 			knob:ClearAllPoints()
-			knob:SetPoint("LEFT", 3 + pos * 18, 0)
+			knob:SetPoint("LEFT", 3 + pos * 22, 0)
 			return
 		end
 		local from, t = pos, 0
@@ -371,7 +417,7 @@ function UI.Switch(parent, get, set)
 			local eased = 1 - (1 - t) * (1 - t)
 			pos = from + (target - from) * eased
 			knob:ClearAllPoints()
-			knob:SetPoint("LEFT", 3 + pos * 18, 0)
+			knob:SetPoint("LEFT", 3 + pos * 22, 0)
 		end)
 	end
 	local function Paint(animate)
@@ -407,7 +453,7 @@ end
 -- Numeric box: commits on Enter or focus loss, mouse wheel steps it.
 function UI.NumberBox(parent, width, get, set, step)
 	local box = CreateFrame("EditBox", nil, parent)
-	box:SetSize(width or 56, 26)
+	box:SetSize(width or 64, 30)
 	box:SetAutoFocus(false)
 	box:SetJustifyH("CENTER")
 	UI.SetFont(box, 14)
@@ -454,7 +500,7 @@ end
 -- One dropdown menu shared by every SoulUI dropdown. items are
 -- { value =, label =, font = optional LSM font path, texture = optional bar texture }.
 local menu, catcher
-local MENU_ROW = 24
+local MENU_ROW = 30
 local MENU_MAX = 14
 
 local function EnsureMenu()
@@ -598,10 +644,17 @@ function UI.OpenMenu(anchor, items, current, onPick, width)
 	frame:SetWidth(width or math.max(160, anchor:GetWidth()))
 	frame:SetHeight(math.min(#items, MENU_MAX) * MENU_ROW + 8)
 	frame:ClearAllPoints()
-	frame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2)
+	local menuHeight = math.min(#items, MENU_MAX) * MENU_ROW + 8
+	local anchorBottom = anchor.GetBottom and anchor:GetBottom()
+	if anchorBottom and anchorBottom - menuHeight - 8 < 8 then
+		frame:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, 2)
+	else
+		frame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2)
+	end
 	frame:Paint()
 	catcher:Show()
 	frame:Show()
+	UI.FadeIn(frame, 0.12)
 	catcher:Raise()
 	frame:Raise()
 end
@@ -609,7 +662,7 @@ end
 -- Dropdown button. items may be a table or a function returning one.
 function UI.Dropdown(parent, width, items, get, set)
 	local button = CreateFrame("Button", nil, parent)
-	button:SetSize(width or 200, 28)
+	button:SetSize(width or 210, 32)
 	local face = UI.Fill(button, UI.C.control)
 	local outline = UI.Edge(button, 1, 1, 1, 0.12)
 	local text = UI.Text(button, 14, UI.C.text)
@@ -676,13 +729,13 @@ function UI.Slider(parent, width, minValue, maxValue, step, get, set)
 	local track = slider:CreateTexture(nil, "BACKGROUND")
 	track:SetPoint("LEFT")
 	track:SetPoint("RIGHT")
-	track:SetHeight(3)
+	track:SetHeight(4)
 	track:SetColorTexture(1, 1, 1, 0.1)
 	local fill = slider:CreateTexture(nil, "BORDER")
 	fill:SetPoint("LEFT", track, "LEFT")
-	fill:SetHeight(3)
+	fill:SetHeight(4)
 	local thumb = slider:CreateTexture(nil, "ARTWORK")
-	thumb:SetSize(10, 14)
+	thumb:SetSize(10, 10)
 	thumb:SetColorTexture(1, 1, 1, 1)
 	slider:SetThumbTexture(thumb)
 	local silent = false
@@ -735,7 +788,7 @@ end
 -- Color swatch. get() -> r, g, b[, a]; set(r, g, b[, a]).
 function UI.Swatch(parent, get, set, hasAlpha)
 	local button = CreateFrame("Button", nil, parent)
-	button:SetSize(30, 22)
+	button:SetSize(36, 26)
 	UI.Fill(button, { 0, 0, 0, 1 })
 	local chip = button:CreateTexture(nil, "ARTWORK")
 	chip:SetPoint("TOPLEFT", 2, -2)

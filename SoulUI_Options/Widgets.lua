@@ -15,9 +15,9 @@ if SoulUI_Blocked or not SoulUI then return end
 -- W.Row(col, spec) is a full-width row, W.Row2(col, left, right) two halves.
 -- After any set, the whole page refreshes, so dependent rows grey out at once.
 --
--- Look (0.6.0): a section is a small uppercase heading over one flat panel
--- (white at 2%, no border). Rows inside have no separators; a two-column row
--- splits on one continuous hairline. Label left in the UI font, control right.
+-- Look (0.7.3): each section is a recessed block. Rows sit inside it.
+-- A two-column row is two columns with a gap between them.
+-- Label left, control in a well on the right.
 
 local Soul = SoulUI
 local UI = Soul.UI
@@ -26,9 +26,10 @@ Soul.Widgets = W
 -- Pages.lua publishes helpers on Soul.Options before Panel.lua (loaded last) runs.
 Soul.Options = Soul.Options or {}
 
-local ROW_H = 46
-local PAD = 36   -- page inset, matches Panel.lua GUTTER
-local INSET = 20 -- label / control inset inside a panel
+local ROW_H = 52
+local PAD = 48   -- page inset, matches Panel.lua GUTTER
+local INSET = 22 -- label / control inset inside a section block
+local COL_GAP = 36
 
 W.searchIndex = {}
 
@@ -50,10 +51,10 @@ end
 local function CloseCard(col)
 	local card = col.card
 	if not card then return end
-	col.y = col.y - 6
+	col.y = col.y - 16
 	card:SetHeight(math.max(8, card._top - col.y))
 	col.card = nil
-	col.y = col.y - 30
+	col.y = col.y - 28
 end
 
 local function OpenCard(col)
@@ -64,10 +65,11 @@ local function OpenCard(col)
 	card._top = col.y
 	local bg = card:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	bg:SetColorTexture(1, 1, 1, 0.022)
+	bg:SetColorTexture(0, 0, 0, 0.32)
+	UI.Edge(card, 1, 1, 1, 0.07)
 	col.card = card
 	col.firstRow = true
-	col.y = col.y - 6
+	col.y = col.y - 14
 end
 
 function W.Finish(col)
@@ -109,11 +111,11 @@ end
 
 function W.Section(col, text, hint)
 	CloseCard(col)
-	local font = UI.Text(col.parent, 12, UI.C.faint)
+	local font = UI.Text(col.parent, 11, UI.C.faint)
 	font:SetText(string.upper(text))
-	font:SetPoint("TOPLEFT", col.parent, "TOPLEFT", PAD + 2, col.y)
+	font:SetPoint("TOPLEFT", col.parent, "TOPLEFT", PAD, col.y)
 	if hint then
-		local small = UI.Text(col.parent, 12, UI.C.faint)
+		local small = UI.Text(col.parent, 12, UI.C.dim)
 		small:SetText(hint)
 		small:SetPoint("LEFT", font, "RIGHT", 10, 0)
 	end
@@ -150,13 +152,15 @@ local function RowFrame(col, height)
 	col.stripe = col.stripe + 1
 	local row = CreateFrame("Frame", nil, col.parent)
 	row:SetFrameLevel(col.parent:GetFrameLevel() + 3)
-	row:SetPoint("TOPLEFT", col.parent, "TOPLEFT", PAD, col.y)
-	row:SetPoint("TOPRIGHT", col.parent, "TOPRIGHT", -PAD, col.y)
+	local inset = col.card and (PAD + 8) or PAD
+	row._inset = inset
+	row:SetPoint("TOPLEFT", col.parent, "TOPLEFT", inset, col.y)
+	row:SetPoint("TOPRIGHT", col.parent, "TOPRIGHT", -inset, col.y)
 	row:SetHeight(height or ROW_H)
 	col.firstRow = false
 	local hover = row:CreateTexture(nil, "BACKGROUND", nil, -1)
 	hover:SetAllPoints()
-	hover:SetColorTexture(1, 1, 1, 0.022)
+	hover:SetColorTexture(1, 1, 1, 0.035)
 	hover:Hide()
 	if row.SetMouseMotionEnabled then row:SetMouseMotionEnabled(true) end
 	row:SetScript("OnEnter", function() hover:Show() end)
@@ -211,11 +215,17 @@ local function Control(col, host, spec)
 			set(v)
 		end, spec.step)
 		box:SetPoint("RIGHT", -INSET, 0)
-		local slider = UI.Slider(host, spec.width or 140, spec.min, spec.max, spec.step or 1, spec.get, function(v)
+		local slider = UI.Slider(host, spec.width or 168, spec.min, spec.max, spec.step or 1, spec.get, function(v)
 			set(v)
 			box.Refresh()
 		end)
 		slider:SetPoint("RIGHT", box, "LEFT", -14, 0)
+		host:EnableMouse(true)
+		host:EnableMouseWheel(true)
+		host:SetScript("OnMouseWheel", function(_, delta)
+			local wheel = slider:GetScript("OnMouseWheel")
+			if wheel then wheel(slider, delta) end
+		end)
 		control = slider
 		control.box = box
 		refresh = function()
@@ -232,7 +242,7 @@ local function Control(col, host, spec)
 		local items = spec.items
 		if kind == "font" then items = function() return UI.MediaItems("font") end end
 		if kind == "statusbar" then items = function() return UI.MediaItems("statusbar") end end
-		control = UI.Dropdown(host, spec.width or 180, items, spec.get, set)
+		control = UI.Dropdown(host, spec.width or 210, items, spec.get, set)
 		control:SetPoint("RIGHT", -INSET, 0)
 		refresh = control.Refresh
 	elseif kind == "color" then
@@ -286,7 +296,8 @@ end
 
 function W.Row2(col, left, right)
 	local row = RowFrame(col)
-	local half = (col.width - PAD * 2) / 2
+	local inner = col.width - row._inset * 2
+	local half = (inner - COL_GAP) / 2
 	local a = CreateFrame("Frame", nil, row)
 	a:SetPoint("TOPLEFT")
 	a:SetPoint("BOTTOMLEFT")
@@ -294,14 +305,9 @@ function W.Row2(col, left, right)
 	Control(col, a, left)
 	Index(col, left.label, row)
 	if right then
-		local divider = row:CreateTexture(nil, "ARTWORK")
-		divider:SetPoint("TOP", row, "TOP", 0, 0)
-		divider:SetPoint("BOTTOM", row, "BOTTOM", 0, 0)
-		divider:SetWidth(1)
-		divider:SetColorTexture(1, 1, 1, 0.05)
 		local b = CreateFrame("Frame", nil, row)
-		b:SetPoint("TOPRIGHT")
-		b:SetPoint("BOTTOMRIGHT")
+		b:SetPoint("TOPLEFT", a, "TOPRIGHT", COL_GAP, 0)
+		b:SetPoint("BOTTOMLEFT", a, "BOTTOMRIGHT", COL_GAP, 0)
 		b:SetWidth(half)
 		Control(col, b, right)
 		Index(col, right.label, row)

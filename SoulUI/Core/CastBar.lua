@@ -71,7 +71,9 @@ local function TimeBinding(fontString)
 		local made, formatter = pcall(C_StringUtil.CreateSecondsFormatter)
 		if made and formatter then pcall(binding.SetFormatter, binding, formatter) end
 	end
-	pcall(binding.SetUpdateInterval, binding, 0.1)
+	-- 0 can mean "do not tick" on a duration binding. 0.01 is every hundredth
+	-- of a second, which reads as instant and still lets the binding own the text.
+	pcall(binding.SetUpdateInterval, binding, 0.01)
 	pcall(binding.SetZeroDurationText, binding, "")
 	pcall(binding.SetExpiredText, binding, "")
 	return binding
@@ -262,9 +264,11 @@ function methods:Start(kind)
 	if not Present(duration) then
 		-- The duration object can trail the START event by a frame.
 		self._tries = (self._tries or 0) + 1
-		if self._tries <= 3 then
-			C_Timer.After(0.05, function()
-				if self.unit == unit and not self._preview then self:Refresh() end
+		if self._tries <= 8 then
+			C_Timer.After(0, function()
+				if self.unit == unit and not self._preview and not self._live then
+					self:Start(kind)
+				end
 			end)
 		end
 		return false
@@ -307,7 +311,7 @@ function methods:Start(kind)
 	-- Units the game sends no cast events for (target of target) are polled
 	-- while a cast is up, so the bar still ends.
 	if self.poll and not self._ticker then
-		self._ticker = C_Timer.NewTicker(0.2, function()
+		self._ticker = C_Timer.NewTicker(0.05, function()
 			if not self._live then CancelPoll(self) return end
 			local unitNow = self.unit
 			if not unitNow or not UnitExists(unitNow) or not (Present(UnitCastingInfo(unitNow)) or Present(UnitChannelInfo(unitNow))) then
