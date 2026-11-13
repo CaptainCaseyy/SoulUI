@@ -318,6 +318,7 @@ local function Skin(frame)
 	frame.Power.bg:SetColorTexture(r * 0.75, g * 0.75, b * 0.75, a)
 
 	frame.Gloss:SetAlpha(db.gloss == false and 0 or 1)
+	frame.GlossLine:SetAlpha(db.gloss == false and 0 or 1)
 	frame.Health._absorbClip:SetAlpha(db.absorbs == false and 0 or 1)
 	frame.Health._overClip:SetAlpha(1)
 	frame.Health._overAbsorb:SetAlpha(db.absorbs == false and 0 or 1)
@@ -441,6 +442,14 @@ local function CreateUnitFrame(unit, parent)
 		gloss:SetVertexColor(0, 0, 0, 0)
 	end
 	frame.Gloss = gloss
+	-- A 1px light edge along the top of the fill: the bar reads as a shaped
+	-- object instead of a flat block (0.8.1).
+	local glossLine = health:CreateTexture(nil, "ARTWORK", nil, 7)
+	glossLine:SetPoint("TOPLEFT", fill, "TOPLEFT")
+	glossLine:SetPoint("TOPRIGHT", fill, "TOPRIGHT")
+	glossLine:SetHeight(1)
+	glossLine:SetColorTexture(1, 1, 1, 0.22)
+	frame.GlossLine = glossLine
 
 	-- Absorbs. Shields continue past the fill into the missing health (clipped
 	-- at the bar's end); the part that does not fit shows as a light wash laid
@@ -468,10 +477,13 @@ local function CreateUnitFrame(unit, parent)
 	health._overClip = overClip
 	local over = CreateFrame("StatusBar", nil, overClip)
 	over:SetStatusBarTexture(WHITE)
-	over:SetStatusBarColor(0.75, 0.9, 1, 0.22)
+	-- Shield that does not fit past the fill: a slim bright strip along the
+	-- bottom edge, growing in from the right. A full-height wash read as a
+	-- rendering glitch on a full bar (seen in game, 0.8.1).
+	over:SetStatusBarColor(0.72, 0.9, 1, 0.85)
 	over:SetReverseFill(true)
-	over:SetPoint("TOPRIGHT", health, "TOPRIGHT")
 	over:SetPoint("BOTTOMRIGHT", health, "BOTTOMRIGHT")
+	over:SetHeight(3)
 	over:SetWidth(340)
 	over:SetMinMaxValues(0, 1)
 	over:SetValue(0)

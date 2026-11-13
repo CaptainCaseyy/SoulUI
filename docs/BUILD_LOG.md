@@ -2,6 +2,20 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-13 — laptop — 0.8.1 frames, from the live game
+
+These were checked up close in the running game, after `/reload`.
+
+- **Shield overflow (`UnitFrames.lua`).** Shield that did not fit past the health fill was drawn as a full-height light wash from the right end. On a full bar it looked like a rendering glitch: a pale band over the last fifth of the player frame. It is now a 3px bright strip along the bottom edge, growing in from the right.
+- **Top edge on the health fill (`UnitFrames.lua`).** A 1px light line along the top of the fill, so the bar reads as shaped rather than a flat block. It follows the "Soft shading on the fill" switch.
+- **Meter rank number (`DamageMeters.lua`).** It was one size smaller and gray on a colored bar. It is now the row's font size, near-white, and the rank column is measured at that size.
+
+Versions: SoulUI_UnitFrames and SoulUI_DamageMeters are 0.8.1.
+
+Checked in game after `/reload`: the shield strip and the rank number. Not checked:
+- **Bar texture:** "SoulUI Smooth" needs a full client restart, because WoW only finds new files at launch. Until then bars draw flat.
+- **Combat:** these frames have not been seen in combat.
+
 ## 2026-11-13 — laptop — 0.8.0 motion, live check, edit-mode tags
 
 This was the first pass that looked at the running game: the settings window, edit mode and the frames, at the owner's 155% window scale. The owner asked for the UI and menu to look animated and refined, like EllesmereUI (studied only, nothing copied).

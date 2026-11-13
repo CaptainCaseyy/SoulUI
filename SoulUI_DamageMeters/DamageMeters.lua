@@ -936,7 +936,7 @@ local function StyleRow(window, row, n, rowHeight, stride, fontSize, db)
 	TextStyle(row.Name, fontSize, db)
 	TextStyle(row.Value, fontSize, db)
 	TextStyle(row.Value2, fontSize, db)
-	TextStyle(row.Rank, math_max(8, fontSize - 1), db)
+	TextStyle(row.Rank, fontSize, db)
 	row.Rank:ClearAllPoints()
 	row.Rank:SetPoint("LEFT", row.Bar, "LEFT", 4, 0)
 	row.Rank:SetWidth(window._rankWidth or 14)
@@ -1061,7 +1061,7 @@ function DM:Apply()
 
 		-- Column widths from the font in use (all rows share it).
 		local probe = window.rows[1]
-		TextStyle(probe.Rank, math_max(8, fontSize - 1), db)
+		TextStyle(probe.Rank, fontSize, db)
 		TextStyle(probe.Value, fontSize, db)
 		window._rankWidth = MeasureWidth(probe.Rank, "20")
 		local format = db.valueFormat or "both"
@@ -1126,7 +1126,7 @@ local function MakeRow(parent)
 	text:SetFrameLevel(bar:GetFrameLevel() + 2)
 	local rank = text:CreateFontString(nil, "OVERLAY")
 	rank:SetJustifyH("RIGHT")
-	rank:SetTextColor(0.78, 0.79, 0.82)
+	rank:SetTextColor(1, 1, 1, 0.9)
 	rank:Hide()
 	row.Rank = rank
 	local name = text:CreateFontString(nil, "OVERLAY")
