@@ -137,11 +137,10 @@ local function HookLinks()
 	if linkHooked then return end
 	linkHooked = true
 	-- Links of type "addon" are handed to EventRegistry as "SetItemRef".
+	-- One route only: both fire for the same click, which opened the window twice.
 	if EventRegistry and EventRegistry.RegisterCallback then
 		EventRegistry:RegisterCallback("SetItemRef", function(_, link) OnLink(link) end, Q)
-	end
-	-- Fallback for clients that route it through SetItemRef only.
-	if SetItemRef then
+	elseif SetItemRef then
 		hooksecurefunc("SetItemRef", function(link) OnLink(link) end)
 	end
 end
@@ -186,6 +185,7 @@ local function CopyChat(chat)
 end
 
 local function BuildCopyButtons()
+	if not (UI and UI.IconButton) then return end
 	for i = 1, (NUM_CHAT_WINDOWS or 10) do
 		local chat = _G["ChatFrame" .. i]
 		if chat and not copyButtons[chat] then

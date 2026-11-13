@@ -63,23 +63,81 @@ local SNAPSHOT = {
 	{ key = "Blizzard:BuffBarCooldownViewer", x = -724.5, y = 331.5 },
 }
 
-function Soul:BuildDefaultLayout(profile)
+-- The snapshot was taken on a 1920x1200 UIParent (pixel-perfect scale).
+local SNAP_W, SNAP_H = 1920, 1200
+
+-- Move one CENTER offset onto this window. A spot keeps its distance to the
+-- nearest edge (the bars stay on the bottom edge, the meters on the right),
+-- but never crosses the middle: on a much smaller window it falls back to the
+-- proportional spot. Spots near the middle scale proportionally.
+local function Fit(value, snapHalf, half, band)
+	local mag = value < 0 and -value or value
+	local sign = value < 0 and -1 or 1
+	local scaled = mag * half / snapHalf
+	if mag <= band then return sign * scaled end
+	local kept = mag - (snapHalf - half)
+	if half < snapHalf and kept < scaled then kept = scaled end
+	return sign * kept
+end
+
+-- The module sizes that go with the snapshot are each module's Defaults.
+-- Reset puts these keys back to them, so positions and sizes match again.
+local GEOMETRY = {
+	x = true, y = true, width = true, height = true, size = true, rows = true,
+	spacing = true, vertical = true, orientation = true, buttons = true, gap = true,
+	castHeight = true, castWidth = true, rowHeight = true, rowGap = true,
+	headerHeight = true, powerHeight = true, pixelWidth = true, pixelHeight = true,
+}
+local LAYOUT_MODULES = { "ActionBars", "UnitFrames", "ResourceBars", "GroupFrames", "DamageMeters" }
+
+local function ResetGeometry(dst, defaults)
+	for k, v in pairs(dst) do
+		local d
+		if type(defaults) == "table" then d = defaults[k] end
+		if type(v) == "table" then
+			ResetGeometry(v, d)
+		elseif GEOMETRY[k] then
+			-- Assigning an existing field (nil included) is safe inside pairs.
+			dst[k] = d
+		end
+	end
+end
+
+function Soul:BuildDefaultLayout(profile, keepModules)
 	profile.unlock = profile.unlock or {}
 	profile.unlock.positions = {}
 	profile.unlock.editorAlpha = 0.24
 	local positions = profile.unlock.positions
+	local W, H = UIParent:GetWidth(), UIParent:GetHeight()
+	if type(W) ~= "number" or W < 400 then W = SNAP_W end
+	if type(H) ~= "number" or H < 300 then H = SNAP_H end
 	for i = 1, #SNAPSHOT do
 		local spot = SNAPSHOT[i]
+		local x, y = spot.x, spot.y
+		-- Only plain center offsets move. Edge-anchored and relative spots
+		-- already follow the window.
+		if not spot.point and not spot.relative then
+			x = Soul.Pixel:Scale(Fit(x, SNAP_W / 2, W / 2, 600))
+			y = Soul.Pixel:Scale(Fit(y, SNAP_H / 2, H / 2, 100))
+		end
 		positions[spot.key] = {
 			point = spot.point or "CENTER",
 			relPoint = spot.relPoint or "CENTER",
 			relative = spot.relative,
-			x = spot.x,
-			y = spot.y,
+			x = x,
+			y = y,
 		}
 	end
+	if not keepModules and type(profile.modules) == "table" and type(Soul.Defaults) == "table" then
+		for i = 1, #LAYOUT_MODULES do
+			local key = LAYOUT_MODULES[i]
+			if type(profile.modules[key]) == "table" then
+				ResetGeometry(profile.modules[key], Soul.Defaults[key])
+			end
+		end
+	end
 	profile._layoutVersion = LAYOUT_VERSION
-	profile._layoutSize = { 1920, 1200 }
+	profile._layoutSize = { W, H }
 	profile._partyVertical = true
 	profile._singleCast = true
 	return true
@@ -138,6 +196,17 @@ function Soul:ApplyDefaultLayout()
 	if profile._layoutVersion == LAYOUT_VERSION then
 		PartyVertical(profile)
 		SingleCast(profile)
+		return
+	end
+	-- 0.9.14 (layout 4): a profile that already had a layout keeps it. Only
+	-- a profile that never had one gets the new default written in. The new
+	-- default is one click away (Reset Layout), so nobody's frames move on
+	-- their own after an update.
+	if type(profile._layoutVersion) == "number" then
+		profile._layoutVersion = LAYOUT_VERSION
+		PartyVertical(profile)
+		SingleCast(profile)
+		self:Print("Your layout was kept. Edit mode (/soul move) > Reset Layout loads the new SoulUI default.")
 		return
 	end
 	if self:BuildDefaultLayout(profile) then

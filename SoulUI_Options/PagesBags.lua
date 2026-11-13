@@ -117,12 +117,17 @@ local function BuildWindow(col)
 	W.Row2(col,
 		Toggle("Split stacks", "splitStack", "Shift-right-click a stack, type how many, and the game picks that stack up."),
 		Toggle("Quick action", "quickAction", "A small button on the hovered item. Click it to cast the spell below on that item. Hidden in combat."))
-	W.Row(col, {
-		type = "slider", label = "Quick action spell id", min = 1, max = 1000000, step = 1, disabled = function() return Off() or not DB().quickAction end,
-		tooltip = "13262 is Disenchant. The spell has to be one you can cast on an item.",
-		get = function() return DB().quickSpell or 13262 end,
-		set = function(v) DB().quickSpell = v Apply() end,
-	})
+	-- A spell id is typed, not dragged on a slider.
+	local spellRow = W.Input(col, "Quick action spell id", "Set", function(text, box)
+		local id = tonumber(text)
+		if id and id >= 1 and id == math.floor(id) then
+			DB().quickSpell = id
+			Apply()
+		end
+		box:SetText(tostring(DB().quickSpell or 13262))
+	end, 120)
+	spellRow.box:SetText(tostring(DB().quickSpell or 13262))
+	W.Note(col, "13262 is Disenchant. The quick action shows only for a spell you know.")
 	W.Note(col, "Alt-click a slot to pin that item into the Pinned section.")
 	W.Row2(col,
 		Slider("Columns", "columns", 4, 24, 1, "How many slots fit across the window."),
@@ -138,11 +143,14 @@ local function BuildWindow(col)
 			get = function() return DB().scale end,
 			set = function(v) DB().scale = v Apply() end,
 		})
-	W.Row(col, {
-		type = "slider", label = "Background opacity", min = 0.5, max = 1, step = 0.01, disabled = Off,
-		get = function() return DB().bgAlpha end,
-		set = function(v) DB().bgAlpha = v Apply() end,
-	})
+	W.Row2(col,
+		{
+			type = "slider", label = "Background opacity", min = 0.5, max = 1, step = 0.01, disabled = Off,
+			get = function() return DB().bgAlpha end,
+			set = function(v) DB().bgAlpha = v Apply() end,
+		},
+		Slider("Max height", "maxHeight", 360, 1200, 10,
+			"The tallest the bag window grows. Past it, the items scroll (mouse wheel). Never more than 85% of the screen."))
 
 	W.Section(col, "Header and footer")
 	W.Row2(col,
@@ -167,9 +175,11 @@ local function BuildItems(col)
 	W.Row2(col,
 		Toggle("Group into categories", "categories", "Splits the bags into sections: new, equipment, consumables, quest, reagents and more."),
 		Toggle("Pack small sections", "packSections", "Small sections sit side by side instead of each starting a new row.", noCats))
+	-- Titles also head each bag in the per-bag style.
+	local function noTitles() return Off() or (not DB().categories and DB().style ~= "bags") end
 	W.Row2(col,
-		Toggle("Section titles", "sectionTitles", nil, noCats),
-		Slider("Title size", "titleSize", 9, 18, 1, nil, noCats))
+		Toggle("Section titles", "sectionTitles", nil, noTitles),
+		Slider("Title size", "titleSize", 9, 18, 1, nil, noTitles))
 	W.Row2(col,
 		Dropdown("Order inside a section", "sortMode", SORT_ITEMS, "Only the order on screen. Items do not move inside your bags."),
 		Dropdown("Free slots", "emptyMode", EMPTY_ITEMS, "One slot with a count keeps the window short. Drop an item on it to put it in that slot."))

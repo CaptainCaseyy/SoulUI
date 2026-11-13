@@ -736,6 +736,8 @@ local NAV_ICONS = {
 	actionbars = "grid",
 	resources = "pips",
 	meters = "bars",
+	bags = "bag",
+	qol = "checklist",
 }
 
 local function NavRow(info, y)

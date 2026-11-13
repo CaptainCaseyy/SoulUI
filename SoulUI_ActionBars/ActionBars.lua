@@ -135,10 +135,12 @@ local EXTRA_BARS = { "ExtraActionBarFrame", "ZoneAbilityFrame", "ExtraAbilityCon
 local function BarOffScreen(frame)
 	local left, right = frame:GetLeft(), frame:GetRight()
 	local top, bottom = frame:GetTop(), frame:GetBottom()
-	if not left or not right or not top or not bottom then return true end
+	-- No rect yet (an empty container, a bar Blizzard has not laid out): not
+	-- a reason to move it. Only a measured spot past the edge is.
+	if not left or not right or not top or not bottom then return false end
 	local scale = frame:GetEffectiveScale() or 1
 	local ui = UIParent:GetEffectiveScale() or 1
-	if scale <= 0 or ui <= 0 then return true end
+	if scale <= 0 or ui <= 0 then return false end
 	local ratio = scale / ui
 	local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
 	left, right, top, bottom = left * ratio, right * ratio, top * ratio, bottom * ratio
@@ -154,15 +156,21 @@ local function RescueExtra(name)
 	end
 	local main = _G.MainActionBar or _G.MainMenuBar
 	local parent = frame:GetParent()
+	local container = _G.ExtraAbilityContainer
+	-- A bar that still sits in Blizzard's own extra-ability container is laid
+	-- out by that container. Move the container (its own entry), not the bar,
+	-- or the two fight over the anchor.
+	local inContainer = container and container ~= frame and parent == container
 	local buried = parent == main or (parent and parent.GetAlpha and (parent:GetAlpha() or 1) < 0.05)
-	if buried or BarOffScreen(frame) then
+	if not inContainer and (buried or BarOffScreen(frame)) then
 		frame:SetParent(UIParent)
 		frame:ClearAllPoints()
 		frame:SetPoint("CENTER", UIParent, "CENTER", 0, name == "ZoneAbilityFrame" and 20 or 90)
 	end
 	frame:SetAlpha(1)
 	frame:SetFrameStrata("HIGH")
-	if frame.EnableMouse then frame:EnableMouse(true) end
+	-- The frames themselves stay mouse-transparent (the container is wide and
+	-- would block world clicks above center). Only the buttons take clicks.
 	local button = _G.ExtraActionButton1
 	if button and button:GetParent() == frame then
 		button:SetAlpha(1)
@@ -429,7 +437,11 @@ local function TextSizes(btn)
 	local hotkey = db.hotkeySize or 0
 	if hotkey <= 0 then hotkey = math.max(8, math.floor(size * 0.27 + 0.5)) end
 	local count = db.countSize or 0
-	if count <= 0 then count = math.max(14, math.floor(size * 0.46 + 0.5)) end
+	if count <= 0 then
+		-- At least 14 so a stack reads on a normal button, but never taller
+		-- than the button itself (the 12px extra bar).
+		count = math.max(math.min(14, math.floor(size * 0.9)), math.floor(size * 0.46 + 0.5), 7)
+	end
 	local macro = db.macroSize or 0
 	if macro <= 0 then macro = math.max(7, math.floor(size * 0.22 + 0.5)) end
 	return hotkey, count, macro
@@ -596,23 +608,26 @@ end
 
 -- Pressed, checked and highlight art is built for a 45px slot. Anchor it to
 -- the button itself so it follows that button's size.
-local function FitPress(btn)
-	local regions = {
-		btn.GetPushedTexture and btn:GetPushedTexture(),
-		btn.GetCheckedTexture and btn:GetCheckedTexture(),
-		btn.GetHighlightTexture and btn:GetHighlightTexture(),
-		btn.Flash, btn.PushedTexture, btn.CheckedTexture, btn.HighlightTexture,
-		btn.NewActionTexture, btn.Border,
-	}
-	local icon = SpellIcon(btn)
-	for i = 1, #regions do
-		local region = regions[i]
-		if region and region ~= icon and region.SetPoint then
-			region:ClearAllPoints()
-			region:SetPoint("TOPLEFT", btn, "TOPLEFT")
-			region:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT")
-		end
+-- Runs on every press, so no table is built here.
+local function PinToButton(region, btn, icon)
+	if region and region ~= icon and region.SetPoint then
+		region:ClearAllPoints()
+		region:SetPoint("TOPLEFT", btn, "TOPLEFT")
+		region:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT")
 	end
+end
+
+local function FitPress(btn)
+	local icon = SpellIcon(btn)
+	PinToButton(btn.GetPushedTexture and btn:GetPushedTexture(), btn, icon)
+	PinToButton(btn.GetCheckedTexture and btn:GetCheckedTexture(), btn, icon)
+	PinToButton(btn.GetHighlightTexture and btn:GetHighlightTexture(), btn, icon)
+	PinToButton(btn.Flash, btn, icon)
+	PinToButton(btn.PushedTexture, btn, icon)
+	PinToButton(btn.CheckedTexture, btn, icon)
+	PinToButton(btn.HighlightTexture, btn, icon)
+	PinToButton(btn.NewActionTexture, btn, icon)
+	PinToButton(btn.Border, btn, icon)
 end
 
 local function FitIcon(btn)
@@ -804,6 +819,11 @@ FitAlert = function(btn)
 	if not alert then return end
 	local size = btn._soulSize or 45
 	if size < 8 then size = 45 end
+	-- Blizzard sizes the alert from the button when it creates it (1.4x the
+	-- button), while the start burst inside it has a fixed size. Put the
+	-- alert back to its 45px-button size first, then scale the whole thing,
+	-- so a resized button does not get scaled twice.
+	alert:SetSize(45 * 1.4, 45 * 1.4)
 	alert:SetScale(size / 45)
 	alert:ClearAllPoints()
 	alert:SetPoint("CENTER", btn, "CENTER", 0, 0)
@@ -817,7 +837,11 @@ local function KeepBlizzardGlow()
 	local manager = _G.ActionButtonSpellAlertManager
 	if manager and manager.ShowAlert then
 		hooksecurefunc(manager, "ShowAlert", function(_, button)
-			if button and button._soulSize then FitAlert(button) end
+			if button and button._soulSize then
+				-- The stock alert replaces our fallback glow from now on.
+				if button._soulGlow then button._soulGlow:Hide() end
+				FitAlert(button)
+			end
 		end)
 	end
 	if _G.ActionButton_ShowOverlayGlow then

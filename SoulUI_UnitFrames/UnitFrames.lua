@@ -793,7 +793,7 @@ local function LayoutText(frame, live, px)
 		layout = "center"
 	end
 	local padY = Clamp(math.floor(innerH * 0.08 + 0.5), 2, 5)
-		if live.namePosition == "above" then
+	if live.namePosition == "above" then
 		local above = 3
 		if frame.Buffs or frame.Debuffs then above = 56 end
 		name:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", px, above)

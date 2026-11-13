@@ -95,7 +95,13 @@ Q:Feature({
 -- one per pass, never while the mailbox, a vendor, the bank or trade is open.
 ------------------------------------------------------------------------------
 
-local open = { busy = {}, pending = false, looting = false }
+-- busy: named windows. interaction: any NPC interaction window by type
+-- (guild bank, void storage, warband bank ... where a used item would move).
+local open = { busy = {}, interaction = {}, pending = false, looting = false }
+local OPEN_WINDOWS = {
+	"MerchantFrame", "BankFrame", "MailFrame", "SendMailFrame", "TradeFrame",
+	"AuctionHouseFrame", "GuildBankFrame", "AccountBankPanel",
+}
 
 local function IsLockedBox(bag, slot)
 	if not (C_TooltipInfo and C_TooltipInfo.GetBagItem) or type(LOCKED) ~= "string" then return false end
@@ -113,6 +119,16 @@ local function Busy()
 	if InCombatLockdown() or open.looting then return true end
 	for _, on in pairs(open.busy) do
 		if on then return true end
+	end
+	for _, on in pairs(open.interaction) do
+		if on then return true end
+	end
+	-- The flags above are only kept while the feature is on. A window that
+	-- was already open when it was switched on is caught here: using a
+	-- container at a vendor would sell it, at a bank it would move it.
+	for i = 1, #OPEN_WINDOWS do
+		local frame = _G[OPEN_WINDOWS[i]]
+		if frame and frame.IsShown and frame:IsShown() then return true end
 	end
 	return false
 end
@@ -164,6 +180,13 @@ Q:Feature({
 		TRADE_CLOSED = Mark("trade", false),
 		AUCTION_HOUSE_SHOW = Mark("auction", true),
 		AUCTION_HOUSE_CLOSED = Mark("auction", false),
+		PLAYER_INTERACTION_MANAGER_FRAME_SHOW = function(_, kind)
+			if type(kind) == "number" then open.interaction[kind] = true end
+		end,
+		PLAYER_INTERACTION_MANAGER_FRAME_HIDE = function(_, kind)
+			if type(kind) == "number" then open.interaction[kind] = nil end
+			ScheduleOpen()
+		end,
 	},
 	enable = ScheduleOpen,
 })

@@ -333,8 +333,9 @@ local function Versatility()
 	if not rating or not GetCombatRatingBonus then return 0 end
 	local fromRating = GetCombatRatingBonus(rating)
 	local bonus = GetVersatilityBonus and GetVersatilityBonus(rating)
-	if fromRating == nil then return 0 end
-	if bonus == nil or Q.IsSecret(fromRating) or Q.IsSecret(bonus) then return fromRating end
+	-- type() is allowed on a secret; == nil is a comparison and is not.
+	if type(fromRating) ~= "number" then return 0 end
+	if type(bonus) ~= "number" or Q.IsSecret(fromRating) or Q.IsSecret(bonus) then return fromRating end
 	return fromRating + bonus
 end
 
@@ -449,6 +450,13 @@ Q:Feature({
 	events = {
 		UNIT_HEALTH = function(_, unit)
 			if type(unit) ~= "string" then return end
+			-- In a raid the same person is also "player" or "partyN"; only the
+			-- raid tokens count there, so one death is one alert.
+			if IsInRaid() then
+				if unit:sub(1, 4) ~= "raid" then return end
+			elseif unit:sub(1, 4) == "raid" then
+				return
+			end
 			local now = DeadNow(unit)
 			if now == nil then return end
 			local was = dead[unit]

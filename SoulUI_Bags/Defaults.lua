@@ -15,6 +15,7 @@ SoulUI.Defaults.Bags = {
 	sectionGap = 12,
 	padding = 12,
 	bgAlpha = 0.97,
+	maxHeight = 560,         -- tallest the window grows (and at most 85% of the screen); items scroll past it
 
 	-- Sections
 	categories = true,       -- group items into sections
@@ -22,6 +23,7 @@ SoulUI.Defaults.Bags = {
 	sectionTitles = true,
 	titleSize = 12,
 	cats = {
+		pin = true,              -- alt-clicked items get their own section
 		new = true,
 		equipment = true,
 		consumable = true,

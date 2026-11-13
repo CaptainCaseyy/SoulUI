@@ -267,8 +267,12 @@ local function PullInside(frame)
 	-- A clipped icon row only needs a small nudge. A huge shift is a bad
 	-- measurement, and applying it throws the menu off the window.
 	if dx > 64 or dx < -64 or dy > 64 or dy < -64 then return end
+	-- Only a frame held by one anchor on UIParent (as the comment above
+	-- says). A frame laid out by a managed container or by two anchors would
+	-- lose its size or fight the container.
+	if frame.GetNumPoints and frame:GetNumPoints() ~= 1 then return end
 	local point, rel, relPoint, x, y = frame:GetPoint(1)
-	if not point or not rel then return end
+	if not point or rel ~= UIParent then return end
 	frame:ClearAllPoints()
 	frame:SetPoint(point, rel, relPoint, (x or 0) + dx / ratio, (y or 0) + dy / ratio)
 end

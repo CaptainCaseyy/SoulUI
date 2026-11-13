@@ -158,6 +158,8 @@ end
 function Soul:ClampToScreen(frame)
 	if not frame or not frame.GetPoint or not frame.GetWidth then return end
 	if InCombatLockdown() and frame.IsProtected and frame:IsProtected() then return end
+	-- Secret anchoring (12.x) makes GetPoint offsets secret; no math on them.
+	if frame.IsAnchoringSecret and frame:IsAnchoringSecret() then return end
 	local point, rel, relPoint, x, y = frame:GetPoint(1)
 	if not point or not rel or not rel.GetWidth then return end
 	local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
@@ -791,10 +793,13 @@ end
 
 local function EnsureToolbar()
 	if toolbar then return toolbar end
+	-- TOOLTIP strata, under the shared dropdown list (catcher 900, list 1000)
+	-- but above every mover, the inspector, and any FULLSCREEN_DIALOG frame
+	-- another addon or Blizzard shows over the screen.
 	toolbar = UI.Window("SoulUI_EditToolbar", "SoulUI  Edit Mode", 980, 92, {
-		strata = "FULLSCREEN_DIALOG", toplevel = false, noClose = true,
+		strata = "TOOLTIP", toplevel = false, noClose = true,
 	})
-	toolbar:SetFrameLevel(520)
+	toolbar:SetFrameLevel(800)
 
 	local hint = UI.Text(toolbar.bar, 11, UI.C.dim, "RIGHT")
 	hint:SetPoint("RIGHT", -14, 0)
@@ -847,13 +852,9 @@ local function EnsureToolbar()
 	save:RegisterForClicks("AnyUp")
 	save:SetPoint("RIGHT", -14, 0)
 	local cancel = UI.Button(row, "Cancel", 80, 30, function()
+		-- CloseUnlock hides the toolbar before it reverts anything, and hides
+		-- it even when no session is open, so this click always ends edit mode.
 		Soul:CloseUnlock(true)
-		-- Belt and braces: the owner saw Cancel leave the session open once.
-		-- Whatever happened, the click must end edit mode.
-		if Soul.unlocking then
-			Soul.unlocking = false
-			Soul:HideMovers()
-		end
 	end)
 	cancel:RegisterForClicks("AnyUp")
 	cancel:SetPoint("RIGHT", save, "LEFT", -8, 0)
@@ -1193,26 +1194,32 @@ function Soul:CommitUnlock(quiet)
 end
 
 function Soul:CloseUnlock(revert)
-	if not self.unlocking then return end
+	if not self.unlocking then
+		-- Never leave the toolbar up with no session behind it.
+		self:HideMovers()
+		return
+	end
 	self.unlocking = false
-	if revert and session then
+	local old = session
+	session = nil
+	selected = nil
+	-- Close the edit surface first, so nothing below can leave it open.
+	self:HideMovers()
+	if revert and old then
 		local profile = self:ActiveProfile()
-		profile.unlock.positions = session.positions
-		if session.modules then
-			for key, data in pairs(session.modules) do
+		profile.unlock.positions = old.positions
+		if old.modules then
+			for key, data in pairs(old.modules) do
 				profile.modules[key] = data
 			end
 		end
-		profile._layoutVersion = session.layoutVersion
-		profile.blizzard = session.blizzard
+		profile._layoutVersion = old.layoutVersion
+		profile.blizzard = old.blizzard
 	end
-	local reverted = revert and session and session.dirty
-	session = nil
-	selected = nil
+	local reverted = revert and old and old.dirty
 	for _, element in pairs(self._movers) do
 		if element.onEdit then pcall(element.onEdit, false) end
 	end
-	self:HideMovers()
 	if reverted then
 		self:Fire("ProfileChanged", self.db.activeProfile)
 		self:Print("Edit mode cancelled. Changes were undone.")

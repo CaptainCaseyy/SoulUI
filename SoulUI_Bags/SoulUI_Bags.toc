@@ -2,7 +2,7 @@
 ## Title: SoulUI Bags
 ## Notes: One combined bag window with categories, search and sort, plus the bank and warband bank
 ## Author: SoulBound
-## Version: 0.9.8
+## Version: 0.9.15
 ## Dependencies: SoulUI
 ## Category: SoulUI
 ## Group: SoulUI

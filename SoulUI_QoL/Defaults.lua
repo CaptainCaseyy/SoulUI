@@ -2,9 +2,13 @@ if SoulUI_Blocked or not SoulUI then return end
 
 SoulUI.Defaults = SoulUI.Defaults or {}
 
--- Every feature is one boolean. Features that only spend the player's own
--- gold on things they would always buy (repairs) or sell gray items start on.
--- Anything that accepts, declines, confirms or skips something starts off.
+-- Every feature is one boolean. Since 0.9.14 these are the owner's live
+-- switches (the shipped default layout), so several helpers that act for the
+-- player start on: repair, junk selling, loot confirmations, opening
+-- containers, skipping cinematics, gossip and quests, accepting invites from
+-- friends and guild, and summons. Declining duels and invites, accepting
+-- resurrections, battleground release and anything that talks in chat start
+-- off. The notes on the settings tabs say which is which; keep them in step.
 SoulUI.Defaults.QoL = {
 	-- Vendors
 	autoRepair = true,
@@ -92,6 +96,7 @@ SoulUI.Defaults.QoL = {
 
 	-- Raid
 	pullTimer = true,
+	pullSize = 24,
 	raidMarkers = false,
 	buffCheck = false,
 	partyKeys = true,
@@ -102,13 +107,19 @@ SoulUI.Defaults.QoL = {
 	waypoints = true,
 	chatCover = false,
 	targetDistance = false,
+	distanceSize = 13,
 	rested = false,
+	restedSize = 13,
 	potionReady = false,
+	potionSize = 36,
 	unspentTalents = false,
+	talentsSize = 13,
 	combatText = false,
 	moveAlert = false,
+	moveSize = 36,
 	cursorTrail = false,
 	gcdRing = false,
+	gcdRingSize = 40,
 
 	-- Skins
 	questSkin = false,

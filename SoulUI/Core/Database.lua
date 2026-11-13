@@ -93,6 +93,37 @@ function Soul:InitDB()
 	if db.account.debug == nil then db.account.debug = false end
 	if db.account.panelScale == nil then db.account.panelScale = 1.55 end
 
+	-- 0.9.14 made class color the default accent. Saved profiles drop values
+	-- equal to the old default, so a profile from before that change would
+	-- switch to class color on its own. Pin the old setting once, before the
+	-- theme defaults are merged in. Only profiles that already had a layout
+	-- (layout version 1-3) are older than the change.
+	if not db._migrations["accent-0.9.14"] then
+		db._migrations["accent-0.9.14"] = true
+		for _, profile in pairs(db.profiles) do
+			if type(profile) == "table" and type(profile._layoutVersion) == "number"
+				and profile._layoutVersion < 4 and type(profile.theme) == "table"
+				and profile.theme.accentUseClass == nil then
+				profile.theme.accentUseClass = false
+			end
+			-- Meter 1 gained a stored pixel size in the defaults. An older
+			-- profile keeps sizing it from the shared width and rows (false
+			-- is "not set" to the meter code and survives the default merge).
+			if type(profile) == "table" and type(profile._layoutVersion) == "number"
+				and profile._layoutVersion < 4 then
+				profile.modules = type(profile.modules) == "table" and profile.modules or {}
+				local meters = profile.modules.DamageMeters
+				if type(meters) ~= "table" then meters = {} profile.modules.DamageMeters = meters end
+				if type(meters.windows) ~= "table" then meters.windows = {} end
+				if type(meters.windows[1]) ~= "table" then meters.windows[1] = {} end
+				local first = meters.windows[1]
+				if first.pixelWidth == nil then first.pixelWidth = false end
+				if first.pixelHeight == nil then first.pixelHeight = false end
+				if first.rows == nil then first.rows = false end
+			end
+		end
+	end
+
 	if type(db.profiles[db.activeProfile]) ~= "table" then
 		db.profiles[db.activeProfile] = self:NewProfileTable()
 	end

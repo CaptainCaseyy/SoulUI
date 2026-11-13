@@ -2,6 +2,90 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-13 — laptop — 0.9.15 review of the Cursor build, checked in game
+
+Cursor shipped 0.9.1–0.9.14 in one commit (b30e7ee): new Bags and QoL modules, plus changes to core and every module. That commit was never reviewed. Three Claude reviewers each read one area line by line and fixed what they found. The lead checked the live game before and after.
+
+**Layout and profiles (`Layout.lua`, `Database.lua`).**
+- **Every existing profile was being overwritten.** Layout v4 rebuilt any profile below v4, and `BuildDefaultLayout` wipes `unlock.positions`, so every guild member's layout (and the home PC's) would be replaced on login. A profile with an older `_layoutVersion` now keeps its layout, is flagged v4, and prints once that Reset Layout loads the new default.
+- **Reset Layout** now also resets sizes (`ResetGeometry`), not only positions.
+- **Other screen sizes:** the 1920x1200 snapshot is fitted to the current screen. Each element keeps its distance to the nearest edge (`Fit`).
+- **Migration `accent-0.9.14`:** older profiles keep the cyan accent and their meter 1 size instead of switching silently.
+- **Not pinned (the owner decides):** other new defaults, such as `showEmpty`, meter value format and rank, and the striped shield look, still apply to profiles that never changed them.
+
+**Bags (`SoulUI_Bags/*`, `PagesBags.lua`).**
+- **Window behaviour:**
+  - It keeps its top edge when filtering or searching (`BG.PlaceTop`); before, it jumped under the cursor.
+  - The item area scrolls inside a height cap (`maxHeight`, default 560).
+  - The sidebar no longer runs into the footer, and gold has separators ("965,326").
+- **Stack splitting:** it called the removed global `SplitContainerItem`; it now uses `C_Container.SplitContainerItem`.
+- **List rows** used `btn:Click()` from addon code, which the game blocks. The real secure slot button now sits in each row.
+- **Item level:** gear not yet cached stayed blank forever. It now waits for `GET_ITEM_INFO_RECEIVED`.
+- **Pinned toggle** did nothing (missing default).
+- **Quick action button:**
+  - Its setup waits until out of combat.
+  - It takes both click directions.
+  - It is hidden for unknown spells and hides when the bags close.
+- **Bank cooldowns** repaint now.
+- **Footer:** buttons no longer overlap.
+- **Performance:** no per-slot table churn.
+- **Alts and gold panels:** they close with Escape and can be dragged.
+
+**Quality of life (`SoulUI_QoL/*`, `PagesQoL*.lua`).**
+- **Raid.lua `UI` was undefined:** the buff check and keystone popup would error.
+- **Buff check:** reading auras throws while auras are restricted on 12.1; it is now pcall'd per unit.
+- **Pull timer and world markers:**
+  - Markers use the right icons and take both click directions.
+  - The secure marker bar is no longer shown or hidden in combat.
+  - The pull timer has its own size and no double countdown.
+- **Secret values:** a secret compare in Versatility was removed.
+- **Death alert:** each death alerts once.
+- **Accepting a group invite** marks the popup accepted, so it does not decline on hide.
+- **Containers:** they are never opened while a vendor, bank, mail, trade, auction house or guild or warband bank is open.
+- **Chat:** a link opens the copy box once.
+- **Tools, rewritten:**
+  - Shift-drag uses the 12.x frames and hooks windows that load later.
+  - `/way` checks its input.
+  - Rested, healthstone, talents and combat text update and undo correctly.
+  - The cursor trail and GCD ring OnUpdates run only while on.
+  - Shared size keys are split.
+- **Skins** undo cleanly.
+- **Labels and tab notes** now match what each switch does and its default.
+
+**Core and modules.**
+- **Damage meters:**
+  - The resize grip stops if the window hides mid-drag.
+  - The saved position math is fixed.
+  - Header drag clears the client's own saved position.
+  - The All-windows Width and Rows sliders work again.
+- **Action bars:**
+  - The extra-button rescue leaves Blizzard's container alone and no longer blocks world clicks above center.
+  - The proc alert is no longer scaled twice.
+  - The press textures no longer allocate a table per click.
+  - Stack text fits the 12px extra bar.
+- **`PullInside`** only moves single-anchor UIParent frames. **`ClampToScreen`** skips secret anchors.
+- **Edit mode:**
+  - The toolbar is TOOLTIP strata, level 800, under the dropdown lists.
+  - `CloseUnlock` hides the edit surface first.
+  - The "Cancel does nothing on first open" report was the input tool jumping the cursor and clicking in the same instant: WoW had not registered the hover yet. With the cursor resting on the button, Cancel closes edit mode on the first open after a reload. Checked in game.
+- **New glyphs** `bag`, `checklist` and `spark`; the Bags and Quality of Life sidebar rows use them.
+
+**Checked in game (12.1.5, after `/reload`):**
+- The bags open on B.
+- The category filter keeps the header fixed.
+- Search focuses, dims non-matches and clears on Escape.
+- Gold and scroll display correctly, and Escape closes the window.
+- The Bags and all nine QoL tabs build.
+- Edit mode opens, and Cancel and Escape close it.
+- The sidebar icons show.
+
+**Not checked:**
+- The bank and warband bank, splitting, list mode and quick action.
+- Every QoL automation: these need a vendor, invites, cinematics, a ready check and a key.
+- Meters and action bar procs in combat.
+- The extra action button on a chest.
+- Reset Layout on a 1080p screen.
+
 ## 2026-11-13 — laptop — 0.9.14 current profile is the default layout
 
 Layout version 4 is the owner's live Default profile: frame positions, bar sizes, meter window, unit frame sizes, and the quality-of-life switches that were on. A new profile and Reset layout both start there. Class color is the default accent. The settings window scale starts at 1.55.

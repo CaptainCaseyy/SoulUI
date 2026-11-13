@@ -202,10 +202,14 @@ local function Layout()
 	else
 		emptyNote:Hide()
 	end
-	view.content:ClearAllPoints()
-	view.content:SetPoint("TOPLEFT", win.body, "TOPLEFT", pad, -top)
-	view.content:SetSize(max(1, width), max(1, height))
-	win:SetSize(max(BG.MIN_WIDTH + 60, width + pad * 2), top + max(1, height) + pad + BG.FOOTER)
+	height = max(1, height)
+	local viewH = math.min(height, max(40, BG.MaxHeight(win) - top - pad - BG.FOOTER))
+	win.scroll:ClearAllPoints()
+	win.scroll:SetPoint("TOPLEFT", win.body, "TOPLEFT", pad, -top)
+	win.scroll:SetSize(max(1, width), viewH)
+	view.content:SetSize(max(1, width), height)
+	win:SetSize(max(BG.MIN_WIDTH + 60, width + pad * 2), top + viewH + pad + BG.FOOTER)
+	win:SetScrollOffset(win.scroll:GetVerticalScroll() or 0)
 	PaintTypes()
 	PaintTabs()
 	UpdateFooter()
@@ -269,6 +273,7 @@ local function Build()
 	win.close:SetScript("OnClick", function() win:CloseAnimated() end)
 	if UISpecialFrames then table.insert(UISpecialFrames, "SoulUI_Bank") end
 	view = BG.NewView("bank", win)
+	Bank.view = view
 	BG.AddSection(view, "tab", nil, BG.ByBagSlot)
 
 	local charButton = TypeButton("Bank", CHAR)
@@ -345,6 +350,7 @@ local function Build()
 	footerMoney:SetPoint("RIGHT", -16, 0)
 
 	win:HookScript("OnHide", function()
+		if BG.HideQuick then BG.HideQuick() end
 		-- Closing our window ends the bank visit, unless it was handed to
 		-- Blizzard's frame or the visit already ended.
 		if atBank and not handedToBlizzard and C_Bank.CloseBankFrame then
@@ -371,10 +377,11 @@ local function OnOpened()
 	typeButtons[1]:SetShown(not warbandOnly and CanView(CHAR))
 	typeButtons[2]:SetShown(CanView(ACCOUNT))
 	win:SetScale(BG.WindowScale())
-	Soul:Place(win, "Bags:bank", Fallback())
 	Discover()
 	view.dirtyAll = true
 	Bank.Refresh(true)
+	BG.PlaceTop(win, "Bags:bank", Fallback())
+	win:SetScrollOffset(0)
 	win:OpenAnimated()
 	win:Raise()
 	if not BG:IsOpen() then BG:Open("bank") end
@@ -438,14 +445,14 @@ function Bank.Enable()
 		end,
 	})
 	win:SetScale(BG.WindowScale())
-	Soul:Place(win, "Bags:bank", Fallback())
+	BG.PlaceTop(win, "Bags:bank", Fallback())
 	if Active() then ParkBank(true) end
 end
 
 function Bank.Apply()
 	if not win then return end
 	win:SetScale(BG.WindowScale())
-	Soul:Place(win, "Bags:bank", Fallback())
+	BG.PlaceTop(win, "Bags:bank", Fallback())
 	win:ApplyLook()
 	for _, list in pairs(view.recs) do
 		for slot = 1, #list do BG.StyleRec(list[slot]) end

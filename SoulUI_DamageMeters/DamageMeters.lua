@@ -1248,8 +1248,10 @@ local function SaveMeterSpot(frame, index)
 	if Soul.ClampToScreen then Soul:ClampToScreen(frame) end
 	local cx2, cy2 = frame:GetCenter()
 	if not cx2 then cx2, cy2 = cx, cy end
-	local x = Soul.Pixel:Scale((cx2 - ux) * ratio)
-	local y = Soul.Pixel:Scale((cy2 - uy) * ratio)
+	-- The window's center is in its own scale, UIParent's in UIParent's:
+	-- convert the window first, then subtract.
+	local x = Soul.Pixel:Scale(cx2 * ratio - ux)
+	local y = Soul.Pixel:Scale(cy2 * ratio - uy)
 	local key = "DamageMeters:" .. index
 	Soul:ActiveProfile().unlock.positions[key] = {
 		point = "CENTER", relPoint = "CENTER", x = x, y = y,
@@ -1362,8 +1364,19 @@ local function MakeWindow(index)
 	end)
 	header:SetScript("OnDragStop", function()
 		if not window._dragging then return end
-		window._dragging = nil
 		window:StopMovingOrSizing()
+		-- The profile holds the spot. Without this the client also saves a
+		-- user-placed position for this named frame and restores it at login.
+		if window.SetUserPlaced then window:SetUserPlaced(false) end
+		SaveMeterSpot(window, index)
+		-- The click that ends a drag arrives after this; let it see the drag.
+		C_Timer.After(0, function() window._dragging = nil end)
+	end)
+	header:HookScript("OnHide", function()
+		if not window._dragging then return end
+		window:StopMovingOrSizing()
+		if window.SetUserPlaced then window:SetUserPlaced(false) end
+		window._dragging = nil
 		SaveMeterSpot(window, index)
 	end)
 	for _, button in pairs(window.Buttons) do
@@ -1479,6 +1492,12 @@ local function MakeWindow(index)
 			ResizeMeter(window, grip)
 		end)
 	end)
+	grip:SetScript("OnMouseUp", function(_, button)
+		if button == "LeftButton" then StopResize() end
+	end)
+	-- OnUpdate stops with a hidden frame (combat fade, window turned off), so
+	-- finish the resize here or the grip stays stuck mid-drag.
+	grip:SetScript("OnHide", StopResize)
 	window.Grip = grip
 
 	-- Body: clips the row strip so rows can glide in and out.

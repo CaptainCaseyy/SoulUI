@@ -128,6 +128,24 @@ local GLYPHS = {
 		{ 0.18, -0.02, 0.06, -0.16 }, { 0.06, -0.16, -0.3, -0.16 }, { -0.3, -0.16, -0.42, -0.02 },
 		{ -0.42, -0.02, -0.42, 0.18 }, { -0.42, 0.18, -0.3, 0.34 }, { 0.12, -0.12, 0.42, -0.42 },
 	},
+	-- Bags: a satchel body, slightly wider at the base, with a rounded handle.
+	bag = {
+		{ -0.34, 0.14, 0.34, 0.14 }, { 0.34, 0.14, 0.4, -0.4 },
+		{ 0.4, -0.4, -0.4, -0.4 }, { -0.4, -0.4, -0.34, 0.14 },
+		{ -0.16, 0.14, -0.16, 0.3 }, { -0.16, 0.3, -0.08, 0.38 }, { -0.08, 0.38, 0.08, 0.38 },
+		{ 0.08, 0.38, 0.16, 0.3 }, { 0.16, 0.3, 0.16, 0.14 },
+	},
+	-- Quality of life: three ticked rows.
+	checklist = {
+		{ -0.42, 0.3, -0.34, 0.22 }, { -0.34, 0.22, -0.2, 0.38 }, { -0.06, 0.3, 0.42, 0.3 },
+		{ -0.42, 0, -0.34, -0.08 }, { -0.34, -0.08, -0.2, 0.08 }, { -0.06, 0, 0.42, 0 },
+		{ -0.42, -0.3, -0.34, -0.38 }, { -0.34, -0.38, -0.2, -0.22 }, { -0.06, -0.3, 0.42, -0.3 },
+	},
+	-- Alternative QoL mark: a four-point spark.
+	spark = {
+		{ 0, 0.44, 0, -0.44 }, { -0.44, 0, 0.44, 0 },
+		{ -0.18, 0.18, 0.18, -0.18 }, { -0.18, -0.18, 0.18, 0.18 },
+	},
 }
 
 function UI.Glyph(parent, kind, size, color, thickness)
@@ -384,7 +402,9 @@ local function EnsureTip()
 	if tip then return tip end
 	tip = CreateFrame("Frame", "SoulUI_Tooltip", UIParent)
 	tip:SetFrameStrata("TOOLTIP")
-	tip:SetFrameLevel(400)
+	-- Above the edit toolbar (800) and the dropdown list (1000). It never
+	-- takes the mouse, so it cannot block a click.
+	tip:SetFrameLevel(1200)
 	tip:SetClampedToScreen(true)
 	tip:EnableMouse(false)
 	tip:Hide()

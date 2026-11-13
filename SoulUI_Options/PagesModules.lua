@@ -1050,14 +1050,28 @@ local function BuildMeters(col)
 		get = function() return DMdb().showClock ~= false end,
 		set = function(v) DMdb().showClock = Bool(v) ApplyDM() end,
 	})
+	-- A window resized from its corner grip stores its own pixel size, which
+	-- wins over these shared sliders. "All windows" means all of them, so a
+	-- change here drops those per-window sizes (false, so the defaults merge
+	-- does not put meter 1's stored size back).
+	local WIDTH_KEYS, ROW_KEYS = { "pixelWidth" }, { "pixelHeight", "rows" }
+	local function DropWindowSize(keys)
+		local windows = DMdb().windows
+		if type(windows) ~= "table" then return end
+		for _, cfg in pairs(windows) do
+			if type(cfg) == "table" then
+				for i = 1, #keys do cfg[keys[i]] = false end
+			end
+		end
+	end
 	W.Row2(col, {
 		type = "slider", label = "Width", min = 120, max = 500, step = 1, disabled = off,
 		get = function() return DMdb().width end,
-		set = function(v) DMdb().width = v ApplyDM() end,
+		set = function(v) DMdb().width = v DropWindowSize(WIDTH_KEYS) ApplyDM() end,
 	}, {
 		type = "slider", label = "Rows", min = 3, max = 20, step = 1, disabled = off,
 		get = function() return DMdb().rows end,
-		set = function(v) DMdb().rows = v ApplyDM() end,
+		set = function(v) DMdb().rows = v DropWindowSize(ROW_KEYS) ApplyDM() end,
 	})
 	W.Row2(col, {
 		type = "slider", label = "Row height", min = 10, max = 40, step = 1, disabled = off,

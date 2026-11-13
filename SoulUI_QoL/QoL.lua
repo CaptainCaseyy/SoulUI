@@ -281,6 +281,12 @@ function Q:Display(key, info)
 	end
 
 	function display:Refresh()
+		-- A display that holds secure buttons (world markers) is protected:
+		-- no show, hide or resize in combat. Try again when combat ends.
+		if InCombatLockdown() and frame:IsProtected() then
+			Soul:RunAfterCombat("qol:display:" .. key, function() display:Refresh() end)
+			return
+		end
 		if not Q.on[info.feature] then
 			frame:Hide()
 			return
@@ -296,6 +302,8 @@ function Q:Display(key, info)
 
 	if info.build then info.build(display) end
 	displays[key] = display
+	-- A display that follows the cursor has no fixed spot, so no mover.
+	if info.noMover then return display end
 	self:PlaceDisplay(display)
 
 	Soul:RegisterMover({
@@ -334,6 +342,7 @@ end
 
 function Q:PlaceDisplay(display)
 	local info = display.info
+	if info.noMover then return end
 	Soul:Place(display.frame, "QoL:" .. display.key, {
 		point = "CENTER", relPoint = "CENTER", x = info.x or 0, y = info.y or 0,
 	})

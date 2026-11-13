@@ -3,11 +3,12 @@ if SoulUI_Blocked or not SoulUI then return end
 -- Pull timer, world-marker buttons, a ready-check buff count, and your keystone.
 
 local Soul = SoulUI
+local UI = Soul.UI
 local Q = Soul:GetModule("QoL")
 if not Q then return end
 
 local DB = Q.DB
-local floor = math.floor
+local floor, pcall, type = math.floor, pcall, type
 
 local UNITS = { "player" }
 for i = 1, 4 do UNITS[#UNITS + 1] = "party" .. i end
@@ -19,10 +20,11 @@ for i = 1, 40 do UNITS[#UNITS + 1] = "raid" .. i end
 
 local pull
 local pullEnds
+local pullRun = 0 -- a new /soulpull stops the previous countdown loop
 
 local function PullDisplay()
 	pull = pull or Q:Display("pull", {
-		label = "Pull timer", feature = "pullTimer", sizeKey = "combatAlertSize",
+		label = "Pull timer", feature = "pullTimer", sizeKey = "pullSize", defaultSize = 24,
 		x = 0, y = 180, minSize = 14, maxSize = 48, ratio = 1.2,
 		build = function(d) Q.TextDisplay(d) end,
 		layout = function(d, size)
@@ -40,9 +42,14 @@ local function PullDisplay()
 	return pull
 end
 
-local function PullTick()
+local function PullTick(run)
 	local d = pull
-	if not d or not pullEnds then return end
+	if not d or not pullEnds or run ~= pullRun then return end
+	if not Q.on.pullTimer then
+		pullEnds = nil
+		d.frame:Hide()
+		return
+	end
 	local left = pullEnds - GetTime()
 	if left <= 0 then
 		pullEnds = nil
@@ -53,7 +60,7 @@ local function PullTick()
 	d.text:SetTextColor(1, 0.85, 0.4)
 	d.text:SetFormattedText("Pull %.0f", left)
 	d.frame:Show()
-	C_Timer.After(0.1, PullTick)
+	C_Timer.After(0.1, function() PullTick(run) end)
 end
 
 local function StartPull(seconds)
@@ -61,13 +68,14 @@ local function StartPull(seconds)
 		Soul:Print("Turn on the pull timer under Quality of Life.")
 		return
 	end
-	seconds = tonumber(seconds) or 10
+	seconds = floor(tonumber(seconds) or 10)
 	if seconds < 1 then seconds = 1 end
 	if seconds > 30 then seconds = 30 end
 	PullDisplay()
 	pullEnds = GetTime() + seconds
 	if IsInGroup() then Q.SendGroup("Pulling in " .. seconds) end
-	PullTick()
+	pullRun = pullRun + 1
+	PullTick(pullRun)
 end
 
 SLASH_SOULPULL1 = "/soulpull"
@@ -85,10 +93,17 @@ Q:Feature({
 
 local markers
 
+-- /wm numbers world markers in their own order. Each one is drawn with the
+-- raid target icon of the same shape: 1 square, 2 triangle, 3 diamond,
+-- 4 cross, 5 star, 6 circle, 7 moon, 8 skull.
+local MARKER_ICON = { 6, 4, 3, 7, 1, 2, 5, 8 }
+local MARKER_BAR_W, MARKER_BAR_H = 8 * 26 + 22, 26
+
 local function MarkerBar()
 	if markers then return markers end
+	if InCombatLockdown() then return nil end
 	local bar = CreateFrame("Frame", "SoulUIRaidMarkers", UIParent)
-	bar:SetSize(8 * 26 + 30, 26)
+	bar:SetSize(MARKER_BAR_W, MARKER_BAR_H)
 	bar:Hide()
 	for i = 1, 8 do
 		local b = CreateFrame("Button", "SoulUIWorldMarker" .. i, bar, "SecureActionButtonTemplate")
@@ -96,25 +111,26 @@ local function MarkerBar()
 		b:SetPoint("LEFT", (i - 1) * 26, 0)
 		b:SetAttribute("type", "macro")
 		b:SetAttribute("macrotext", "/wm " .. i)
-		local swatch = b:CreateTexture(nil, "ARTWORK")
-		swatch:SetAllPoints()
-		local color = RAID_TARGET_COLORS and RAID_TARGET_COLORS[i]
-		if color then swatch:SetColorTexture(color.r, color.g, color.b, 0.9) else swatch:SetColorTexture(0.8, 0.8, 0.8, 0.6) end
-		b:RegisterForClicks("AnyUp")
+		local icon = b:CreateTexture(nil, "ARTWORK")
+		icon:SetAllPoints()
+		icon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. MARKER_ICON[i])
+		-- Secure buttons act on the down or the up press depending on the
+		-- ActionButtonUseKeyDown setting; registering both covers either.
+		b:RegisterForClicks("AnyUp", "AnyDown")
 	end
 	local clear = CreateFrame("Button", "SoulUIWorldMarkerClear", bar, "SecureActionButtonTemplate")
 	clear:SetSize(22, 22)
 	clear:SetPoint("LEFT", 8 * 26, 0)
 	clear:SetAttribute("type", "macro")
 	clear:SetAttribute("macrotext", "/cwm all")
-	clear:RegisterForClicks("AnyUp")
+	clear:RegisterForClicks("AnyUp", "AnyDown")
 	local x = clear:CreateFontString(nil, "OVERLAY")
 	Soul:ApplyFont(x, 12)
 	x:SetAllPoints()
 	x:SetText("x")
 	markers = Q:Display("markers", {
 		label = "Raid markers", feature = "raidMarkers",
-		x = 0, y = -220, minSize = 18, maxSize = 36, ratio = 8,
+		x = 0, y = -220,
 		build = function(d)
 			bar:SetParent(d.frame)
 			bar:ClearAllPoints()
@@ -122,8 +138,9 @@ local function MarkerBar()
 			bar:Show()
 			d.bar = bar
 		end,
-		layout = function(d, size)
-			d.frame:SetSize(size * 9, size)
+		-- Fixed size (no size setting): the mover matches the buttons.
+		layout = function(d)
+			d.frame:SetSize(MARKER_BAR_W, MARKER_BAR_H)
 		end,
 		sample = function(d) d.frame:Show() end,
 		paint = function(d) d.frame:Show() end,
@@ -134,11 +151,11 @@ end
 Q:Feature({
 	key = "raidMarkers",
 	enable = function()
-		if InCombatLockdown() then
-			Soul:RunAfterCombat("qol:markers", MarkerBar)
-		else
+		-- RunAfterCombat runs it now when out of combat.
+		Soul:RunAfterCombat("qol:markers", function()
 			MarkerBar()
-		end
+			if markers then markers:Refresh() end
+		end)
 	end,
 })
 
@@ -149,23 +166,37 @@ Q:Feature({
 
 local buffFrame
 
+-- Counts helpful auras on a unit. Returns nil when the game hides them:
+-- since 12.1 the index lookup raises an error while auras are restricted,
+-- and an aura record can be secret, so both end in "hidden".
+local function CountBuffs(unit)
+	local count = 0
+	for index = 1, 40 do
+		local aura = C_UnitAuras.GetAuraDataByIndex(unit, index, "HELPFUL")
+		if not aura then break end
+		if Q.IsSecret(aura) or Q.IsSecret(aura.spellId) then return nil end
+		count = count + 1
+	end
+	return count
+end
+
 local function BuffLines()
 	local lines = {}
+	-- In a raid the party tokens and "player" repeat raid members.
+	local raid = IsInRaid()
 	for i = 1, #UNITS do
 		local unit = UNITS[i]
-		if UnitExists(unit) then
+		local listed = (unit:sub(1, 4) == "raid") == raid
+		if listed and UnitExists(unit) then
 			local name = UnitName(unit)
 			if Q.IsSecret(name) or type(name) ~= "string" then name = unit end
 			local count, hidden = 0, false
 			if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
-				for index = 1, 40 do
-					local aura = C_UnitAuras.GetAuraDataByIndex(unit, index, "HELPFUL")
-					if not aura then break end
-					if Q.IsSecret(aura.spellId) then
-						hidden = true
-						break
-					end
-					count = count + 1
+				local ok, result = pcall(CountBuffs, unit)
+				if ok and type(result) == "number" then
+					count = result
+				else
+					hidden = true
 				end
 			end
 			if hidden then

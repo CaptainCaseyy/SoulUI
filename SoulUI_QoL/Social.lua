@@ -84,6 +84,10 @@ Q:Feature({
 			if Queued() then return end
 			if not Trusted(inviterGUID) then return end
 			AcceptGroup()
+			-- The invite popup declines the group when it hides without this
+			-- flag, so mark it accepted the way its own Accept button does.
+			local dialog = Q.FindPopup("PARTY_INVITE")
+			if dialog then dialog.inviteAccepted = 1 end
 			Q.HidePopup("PARTY_INVITE")
 			Soul:Print("Accepted a group invite from " .. Name(name) .. ".")
 		end,
@@ -122,6 +126,7 @@ Q:Feature({
 		RESURRECT_REQUEST = function(_, inviter)
 			if not DB().acceptResCombat then
 				if IsEncounterInProgress and IsEncounterInProgress() then return end
+				if InCombatLockdown() then return end
 				if type(inviter) == "string" and not Q.IsSecret(inviter) then
 					local busy = UnitAffectingCombat(inviter)
 					if Q.IsSecret(busy) or busy then return end

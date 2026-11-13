@@ -43,7 +43,7 @@ local HEADER = 46
 local FOOTER = 34
 local BAGBAR = 46
 local MIN_WIDTH = 420
-BG.HEADER, BG.FOOTER, BG.MIN_WIDTH = HEADER, FOOTER, MIN_WIDTH
+BG.HEADER, BG.FOOTER, BG.MIN_WIDTH, BG.BAGBAR = HEADER, FOOTER, MIN_WIDTH, BAGBAR
 
 ------------------------------------------------------------------------------
 -- Colors
@@ -192,6 +192,22 @@ local function PointXY(frame, point)
 	return left + width * fx, bottom + height * fy
 end
 
+-- Places a window from its saved position, then re-anchors it by its top
+-- edge (same spot on screen). The bag window changes height when you filter,
+-- search or loot; anchored by the top, the header and search stay under the
+-- cursor. The saved position is not rewritten.
+function BG.PlaceTop(win, key, fallback)
+	Soul:Place(win, key, fallback)
+	if InCombatLockdown() and win:IsProtected() then return end
+	local point, rel, relPoint, x, y = win:GetPoint(1)
+	if not point or point:find("TOP") then return end
+	local fy = point:find("BOTTOM") and 0 or 0.5
+	local h = win:GetHeight() or 0
+	local side = point:find("LEFT") and "LEFT" or (point:find("RIGHT") and "RIGHT" or "")
+	win:ClearAllPoints()
+	win:SetPoint("TOP" .. side, rel, relPoint, x or 0, (y or 0) + (1 - fy) * h)
+end
+
 function BG.SaveDrag(win, key, fallback)
 	local saved = Soul:GetUnlockPosition(key)
 	local point = saved and saved.point or fallback.point or "CENTER"
@@ -202,7 +218,20 @@ function BG.SaveDrag(win, key, fallback)
 		point = point, relPoint = relPoint,
 		x = Soul.Pixel:Scale(fx - rx), y = Soul.Pixel:Scale(fy - ry),
 	}
-	Soul:Place(win, key, fallback)
+	BG.PlaceTop(win, key, fallback)
+end
+
+-- Tallest the bag window may grow, in its own units: the setting, and never
+-- more than 85% of the screen.
+function BG.MaxHeight(win)
+	local db = DB()
+	local cap = type(db.maxHeight) == "number" and db.maxHeight or 560
+	local ratio = win and (win:GetEffectiveScale() / UIParent:GetEffectiveScale()) or 1
+	if not ratio or ratio <= 0 then ratio = 1 end
+	local screen = (UIParent:GetHeight() or 768) * 0.85 / ratio
+	if cap > screen then cap = screen end
+	if cap < 300 then cap = 300 end
+	return cap
 end
 
 function BG.WindowScale()
@@ -310,9 +339,47 @@ function BG.NewWindow(name, titleText, key, fallback)
 	frule:SetColorTexture(UI.C.line[1], UI.C.line[2], UI.C.line[3], UI.C.line[4])
 	win.footer = footer
 
-	local content = CreateFrame("Frame", nil, body)
+	-- Items sit in a scroll area, so a tall bag never grows the window past
+	-- its height cap. The wheel scrolls it; a thin thumb on the right shows
+	-- where you are.
+	local scroll = CreateFrame("ScrollFrame", nil, body)
+	scroll:SetSize(1, 1)
+	scroll:EnableMouseWheel(true)
+	local content = CreateFrame("Frame", nil, scroll)
 	content:SetSize(1, 1)
+	scroll:SetScrollChild(content)
+	win.scroll = scroll
 	win.content = content
+	local thumb = body:CreateTexture(nil, "OVERLAY")
+	thumb:SetWidth(3)
+	thumb:Hide()
+	UI.OnAccent(function(r, g, b) thumb:SetColorTexture(r, g, b, 0.55) end)
+	local function PaintThumb()
+		local viewH = scroll:GetHeight() or 0
+		local fullH = content:GetHeight() or 0
+		if viewH <= 0 or fullH <= viewH + 0.5 then thumb:Hide() return end
+		local range = fullH - viewH
+		local h = max(18, viewH * viewH / fullH)
+		local off = (scroll:GetVerticalScroll() or 0) / range * (viewH - h)
+		thumb:ClearAllPoints()
+		thumb:SetPoint("TOPRIGHT", scroll, "TOPRIGHT", 7, -off)
+		thumb:SetHeight(h)
+		thumb:Show()
+	end
+	-- value is clamped to the real range; the range is computed from the
+	-- sizes we set, not GetVerticalScrollRange (that lags a frame).
+	function win:SetScrollOffset(value)
+		local range = max(0, (content:GetHeight() or 0) - (scroll:GetHeight() or 0))
+		if value > range then value = range end
+		if value < 0 then value = 0 end
+		scroll:SetVerticalScroll(value)
+		PaintThumb()
+	end
+	scroll:SetScript("OnMouseWheel", function(_, delta)
+		if not BG.CanLayout() then return end
+		local step = ((DB().iconSize or 40) + (DB().spacing or 4)) * 2
+		win:SetScrollOffset((scroll:GetVerticalScroll() or 0) - delta * step)
+	end)
 
 	-- Open: fade in while rising 8px. Close: fade out while sinking 4px.
 	local animKey = "bags:" .. (name or "win")
@@ -367,6 +434,13 @@ function BG.SearchBox(parent, width, onChange)
 	local box = CreateFrame("EditBox", nil, parent)
 	box:SetSize(width, 28)
 	box:SetAutoFocus(false)
+	-- The header under the box is a drag handle. The box sits well above it
+	-- and takes focus on any click, so typing always lands here.
+	box:EnableMouse(true)
+	box:EnableKeyboard(true)
+	box:SetFrameLevel(parent:GetFrameLevel() + 10)
+	box:SetHitRectInsets(0, 0, 0, 0)
+	box:SetScript("OnMouseDown", function(self) self:SetFocus() end)
 	box:SetTextInsets(28, 8, 0, 0)
 	box:SetMaxLetters(60)
 	UI.SetFont(box, 13)
@@ -384,7 +458,7 @@ function BG.SearchBox(parent, width, onChange)
 		if onChange then onChange(text) end
 	end)
 	box:SetScript("OnEscapePressed", function(self)
-		self:SetText("")
+		if (self:GetText() or "") ~= "" then self:SetText("") end
 		self:ClearFocus()
 	end)
 	box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
@@ -635,7 +709,7 @@ function BG.ReadSlot(rec)
 		rec.link = info.hyperlink
 		rec.itemID = info.itemID
 		rec.classID, rec.subID, rec.equipLoc = nil, nil, nil
-		rec.level, rec.bindType = nil, nil
+		rec.level, rec.bindType, rec.craftAtlas = nil, nil, nil
 	end
 	local noValue = info.hasNoValue
 	rec.junk = rec.quality == 0 and not issecret(noValue) and not noValue and true or false
@@ -645,18 +719,25 @@ function BG.ReadSlot(rec)
 		rec.classID, rec.subID, rec.equipLoc = classID, subID, equipLoc
 	end
 	local gear = rec.classID and GEAR[rec.classID] and rec.equipLoc and rec.equipLoc ~= "" and rec.equipLoc ~= "INVTYPE_NON_EQUIP_IGNORE"
-	if rec.level == nil then
-		if gear and rec.link and C_Item.GetDetailedItemLevelInfo then
-			rec.level = C_Item.GetDetailedItemLevelInfo(rec.link) or false
-		else
-			rec.level = false
-		end
-	end
-	if gear and rec.bindType == nil and rec.link and C_Item.GetItemInfo then
+	if gear and (rec.level == nil or rec.bindType == nil) and rec.link and C_Item.GetItemInfo then
+		-- Item level and bind type both need the item cached. Until it is,
+		-- leave them unread; GET_ITEM_INFO_RECEIVED reads the bags again.
 		local bindType = select(14, C_Item.GetItemInfo(rec.link))
-		if bindType == nil then pending = true else rec.bindType = bindType end
+		if bindType == nil then
+			pending = true
+		else
+			rec.bindType = bindType
+			if rec.level == nil then
+				rec.level = C_Item.GetDetailedItemLevelInfo and C_Item.GetDetailedItemLevelInfo(rec.link) or false
+			end
+		end
+	elseif rec.level == nil and not gear then
+		rec.level = false
 	end
-	rec.craftAtlas = BG.CraftingAtlas(rec.link, rec.itemID)
+	-- Read once per item (false = no mark), not on every bag update.
+	if rec.craftAtlas == nil then
+		rec.craftAtlas = BG.CraftingAtlas(rec.link, rec.itemID) or false
+	end
 	rec.new = C_NewItems and C_NewItems.IsNewItem and C_NewItems.IsNewItem(rec.bag, rec.slot) or false
 	rec.quest, rec.questStart = false, false
 	if rec.classID == 12 or rec.classID == 0 or rec.classID == 15 then
@@ -706,6 +787,8 @@ BG.BaseAlpha = BaseAlpha
 function BG.Paint(rec)
 	local db = DB()
 	local btn = rec.btn
+	-- List rows carry the count and item level as text beside a small icon.
+	local small = db.style == "list" and rec.view and rec.view.key == "main"
 	if rec.has then
 		if btn.icon then
 			btn.icon:SetTexture(rec.icon)
@@ -715,7 +798,7 @@ function BG.Paint(rec)
 			btn.icon:SetAlpha(grey and 0.6 or 1)
 		end
 		if btn.Count then
-			if rec.count and rec.count > 1 then
+			if not small and rec.count and rec.count > 1 then
 				btn.Count:SetText(rec.count)
 				btn.Count:SetTextColor(1, 1, 1)
 				btn.Count:Show()
@@ -726,14 +809,8 @@ function BG.Paint(rec)
 		end
 		local q = rec.quality or 1
 		if type(q) ~= "number" or issecret(q) then q = 1 end
-		local c = QCOLOR[q]
-		if C_Item and C_Item.GetItemQualityColor then
-			local r, g, b = C_Item.GetItemQualityColor(q)
-			if type(r) == "number" then
-				c = { r, g, b }
-				QCOLOR[q] = c
-			end
-		end
+		-- Colors are read once at load (no table per paint).
+		local c = QCOLOR[q] or QCOLOR[1]
 		if rec.well then rec.well:SetColorTexture(0, 0, 0, 0.42) end
 		if rec.quest and db.questMarks then
 			rec.edge:SetColor(QUEST_COLOR[1], QUEST_COLOR[2], QUEST_COLOR[3], 1)
@@ -747,7 +824,7 @@ function BG.Paint(rec)
 		HideRegion(btn.IconOverlay2)
 		if rec.craft then
 			local atlas = rec.craftAtlas
-			if type(atlas) == "string" and rec.craft.SetAtlas then
+			if not small and type(atlas) == "string" and rec.craft.SetAtlas then
 				rec.craft:ClearAllPoints()
 				rec.craft:SetPoint("TOPLEFT", rec.overlay, "TOPLEFT", 1, -1)
 				rec.craft:SetAtlas(atlas, true)
@@ -765,16 +842,16 @@ function BG.Paint(rec)
 				rec.craft:Hide()
 			end
 		end
-		if db.itemLevel and rec.level and rec.level > 1 then
+		if not small and db.itemLevel and rec.level and rec.level > 1 then
 			rec.ilvl:SetText(rec.level)
-			local c = db.ilvlQualityColor and QCOLOR[q] or QCOLOR[1]
-			rec.ilvl:SetTextColor(c[1], c[2], c[3])
+			local lc = db.ilvlQualityColor and c or QCOLOR[1]
+			rec.ilvl:SetTextColor(lc[1], lc[2], lc[3])
 			rec.ilvl:Show()
 		else
 			rec.ilvl:Hide()
 		end
 		local bindLabel
-		if db.bindText and not rec.bound and rec.bindType then
+		if not small and db.bindText and not rec.bound and rec.bindType then
 			if rec.bindType == 2 then bindLabel = "BoE"
 			elseif rec.bindType == 9 then bindLabel = "WuE"
 			elseif rec.bindType == 3 then bindLabel = "BoU" end
@@ -840,7 +917,8 @@ end
 function BG.PaintFree(rec)
 	local count = rec.btn.Count
 	if not count or rec.has then return end
-	if rec.freeCount then
+	local small = DB().style == "list" and rec.view and rec.view.key == "main"
+	if rec.freeCount and not small then
 		count:SetText(rec.freeCount)
 		count:SetTextColor(UI.C.dim[1], UI.C.dim[2], UI.C.dim[3])
 		count:Show()
@@ -857,6 +935,15 @@ function BG.PaintCooldown(rec)
 	local start, duration, enable = C_Container.GetContainerItemCooldown(rec.bag, rec.slot)
 	if start == nil or duration == nil or issecret(start) or issecret(duration) or issecret(enable) then return end
 	if CooldownFrame_Set then pcall(CooldownFrame_Set, cd, start, duration, enable) end
+end
+
+function BG.PaintCooldowns(v)
+	for _, list in pairs(v.recs) do
+		for slot = 1, #list do
+			local rec = list[slot]
+			if rec.btn:IsShown() then BG.PaintCooldown(rec) end
+		end
+	end
 end
 
 ------------------------------------------------------------------------------
@@ -1130,17 +1217,36 @@ BG.Active = Active
 	if REAGENT and REAGENT ~= 4 then MAIN_BAGS[#MAIN_BAGS + 1] = REAGENT end
 	BG.MAIN_BAGS = MAIN_BAGS
 
+-- Thousands separators. BreakUpLargeNumbers follows the client locale; the
+-- fallback groups by three with commas.
+local function Group(n)
+	if BreakUpLargeNumbers then
+		local ok, text = pcall(BreakUpLargeNumbers, n)
+		if ok and type(text) == "string" then return text end
+	end
+	local s = tostring(floor(n))
+	local out = s:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+	return (out:gsub("^,", ""))
+end
+BG.Group = Group
+
+local GOLD_ICON = "|TInterface\\MoneyFrame\\UI-GoldIcon:0:0:2:0|t"
+local SILVER_ICON = "|TInterface\\MoneyFrame\\UI-SilverIcon:0:0:2:0|t"
+local COPPER_ICON = "|TInterface\\MoneyFrame\\UI-CopperIcon:0:0:2:0|t"
+
+-- "965,326g 12s 4c" with coin icons. Zero silver and copper are left out.
 local function FormatMoney(copper)
-	if type(copper) ~= "number" then return "" end
-	if C_CurrencyInfo and C_CurrencyInfo.GetCoinTextureString then
-		local ok, text = pcall(C_CurrencyInfo.GetCoinTextureString, copper)
-		if ok and text then return text end
-	end
-	if GetMoneyString then
-		local ok, text = pcall(GetMoneyString, copper, true)
-		if ok and text then return text end
-	end
-	return string.format("%dg", floor(copper / 10000))
+	if type(copper) ~= "number" or issecret(copper) then return "" end
+	if copper < 0 then copper = -copper end
+	copper = floor(copper)
+	local gold = floor(copper / 10000)
+	local silver = floor(copper / 100) % 100
+	local cop = copper % 100
+	local parts, n = {}, 0
+	if gold > 0 then n = n + 1 parts[n] = Group(gold) .. GOLD_ICON end
+	if silver > 0 then n = n + 1 parts[n] = silver .. SILVER_ICON end
+	if cop > 0 or n == 0 then n = n + 1 parts[n] = cop .. COPPER_ICON end
+	return table.concat(parts, " ")
 end
 BG.FormatMoney = FormatMoney
 
@@ -1171,7 +1277,7 @@ local function UpdateFooter()
 			and C_CurrencyInfo.GetBackpackCurrencyInfo(i)
 		if info and info.iconFileID then
 			cell.icon:SetTexture(info.iconFileID)
-			cell.text:SetText(BreakUpLargeNumbers and BreakUpLargeNumbers(info.quantity or 0) or (info.quantity or 0))
+			cell.text:SetText(Group(info.quantity or 0))
 			cell:SetWidth((cell.text:GetStringWidth() or 20) + 22)
 			cell:ClearAllPoints()
 			if anchor then
@@ -1187,6 +1293,10 @@ local function UpdateFooter()
 	end
 
 	local hasJunk = (view and view.junkCount or 0) > 0
+	-- After the Alts / History buttons when they show.
+	local left = BG.FootEnd and BG.FootEnd() or footerFree
+	sellJunk:ClearAllPoints()
+	sellJunk:SetPoint("LEFT", left, "RIGHT", 14, 0)
 	sellJunk:SetShown(atMerchant and hasJunk and C_MerchantFrame and C_MerchantFrame.SellAllJunkItems ~= nil)
 end
 BG.UpdateFooter = UpdateFooter
@@ -1237,8 +1347,11 @@ local function Layout()
 	local cats = db.cats or {}
 	local grouped = db.categories ~= false and db.style ~= "bags"
 	local byBag = db.style == "bags"
-	local filter = db.sidebar and view.filter or nil
-	local pins = db.pins
+	-- The sidebar (and its filter) only exists in the combined and list
+	-- styles. A filter left over from those must not empty the per-bag view.
+	local sidebar = db.sidebar and not byBag
+	local filter = sidebar and view.filter or nil
+	local pins = cats.pin ~= false and db.pins or nil
 	local mode = db.emptyMode or "one"
 	BG.ResetSections(view)
 	local freeN, freeR = 0, 0
@@ -1253,15 +1366,17 @@ local function Layout()
 			rec.freeCount = nil
 			if rec.has then
 				if rec.junk then junk = junk + 1 end
-				local cat = grouped and Classify(rec, cats) or "other"
-				if type(pins) == "table" and type(rec.itemID) == "number" and not issecret(rec.itemID) and pins[rec.itemID] then
-					cat = "pin"
-				end
-				if not filter or filter == "all" or cat == filter then
+				-- Classified for the filter even when sections are off.
+				local cat = (grouped or filter) and Classify(rec, cats) or "other"
+				local pinned = type(pins) == "table" and type(rec.itemID) == "number" and not issecret(rec.itemID) and pins[rec.itemID]
+				if pinned then cat = "pin" end
+				if not filter or cat == filter then
 					if byBag then
 						BG.Add(view, "bag" .. bag, rec)
-					else
+					elseif grouped or pinned then
 						BG.Add(view, cat, rec)
+					else
+						BG.Add(view, "other", rec)
 					end
 				end
 			else
@@ -1272,7 +1387,10 @@ local function Layout()
 					freeN = freeN + 1
 					if not firstN then firstN = rec end
 				end
-				if mode == "all" then BG.Add(view, "free", rec) end
+				if mode == "all" then
+					-- Per bag, an empty slot stays in its own bag's block.
+					BG.Add(view, byBag and ("bag" .. bag) or "free", rec)
+				end
 			end
 		end
 	end
@@ -1293,16 +1411,33 @@ local function Layout()
 	end
 
 	local pad = db.padding or 12
-	local side = (db.sidebar and BG.SidebarWidth) or 0
+	local side = (sidebar and BG.SidebarWidth) or 0
 	local top = HEADER + (db.bagBar and BAGBAR or 0) + pad
 	local w = max(MIN_WIDTH, width + pad * 2 + side)
-	view.content:ClearAllPoints()
-	view.content:SetPoint("TOPLEFT", win.body, "TOPLEFT", pad + side, -top)
-	view.content:SetSize(max(1, width), max(1, height))
-	win:SetSize(w, top + max(height, 1) + pad + FOOTER)
-	if Soul.ClampToScreen then Soul:ClampToScreen(win) end
+	height = max(1, height)
+	-- The item area shows up to the height cap and scrolls past it. It is
+	-- never shorter than the sidebar's category list.
+	local viewH = height
+	local cap = BG.MaxHeight(win) - top - pad - FOOTER
+	if viewH > cap then viewH = cap end
+	if side > 0 and BG.SidebarHeight then
+		local need = BG.SidebarHeight() + 12 - pad * 2
+		if viewH < need then viewH = need end
+	end
+	viewH = max(1, viewH)
+	local scroll = win.scroll
+	scroll:ClearAllPoints()
+	scroll:SetPoint("TOPLEFT", win.body, "TOPLEFT", pad + side, -top)
+	scroll:SetSize(max(1, width), viewH)
+	view.content:SetSize(max(1, width), height)
+	win:SetSize(w, top + viewH + pad + FOOTER)
+	win:SetScrollOffset(scroll:GetVerticalScroll() or 0)
 	UpdateFooter()
 	UpdateBagBar()
+end
+
+function BG.ResetScroll()
+	if win and BG.CanLayout() then win:SetScrollOffset(0) end
 end
 
 local function Refresh(full)
@@ -1349,6 +1484,7 @@ function BG:Open(source)
 	end
 	view.dirtyAll = true
 	Refresh(true)
+	BG.ResetScroll()
 	win:OpenAnimated()
 	win:Raise()
 end
@@ -1513,6 +1649,7 @@ local function BuildFooter()
 	local footer = win.footer
 	footerFree = UI.Text(footer, 13, UI.C.dim)
 	footerFree:SetPoint("LEFT", 16, 0)
+	BG.footerFree = footerFree
 
 	sellJunk = UI.Button(footer, "Sell junk", 86, 22, function()
 		if C_MerchantFrame and C_MerchantFrame.SellAllJunkItems then
@@ -1598,6 +1735,8 @@ local function Build()
 		if search:GetText() ~= "" then search:SetText("") end
 		search:ClearFocus()
 		BG.openedBy = nil
+		if BG.HideQuick then BG.HideQuick() end
+		if BG.Snapshot then BG.Snapshot() end
 		if DB().clearNewOnClose and C_NewItems and C_NewItems.ClearAll then
 			C_NewItems.ClearAll()
 			view.dirtyAll = true
@@ -1625,7 +1764,6 @@ function BG:Apply()
 	Soul:RunAfterCombat("bags:apply", function()
 		local db = DB()
 		win:SetScale(BG.WindowScale())
-		Soul:Place(win, "Bags:main", Fallback())
 		ParkBlizzardBags(db.enabled and true or false)
 		BG:ApplyChrome()
 		for _, list in pairs(view.recs) do
@@ -1636,6 +1774,8 @@ function BG:Apply()
 		else
 			Refresh(true)
 		end
+		-- Placed after the refresh, so the top edge is set from the real height.
+		BG.PlaceTop(win, "Bags:main", Fallback())
 		if BG.Bank and BG.Bank.Apply then BG.Bank.Apply() end
 	end)
 end
@@ -1660,12 +1800,9 @@ local function OnEvent(_, event, a1, a2)
 			end
 		end
 	elseif event == "BAG_UPDATE_COOLDOWN" then
-		if win:IsShown() then
-			for _, list in pairs(view.recs) do
-				for slot = 1, #list do
-					if list[slot].btn:IsShown() then BG.PaintCooldown(list[slot]) end
-				end
-			end
+		if win:IsShown() then BG.PaintCooldowns(view) end
+		if BG.Bank and BG.Bank.IsShown and BG.Bank.IsShown() and BG.Bank.view then
+			BG.PaintCooldowns(BG.Bank.view)
 		end
 	elseif event == "INVENTORY_SEARCH_UPDATE" or event == "BAG_NEW_ITEMS_UPDATED" or event == "BAG_CONTAINER_UPDATE" then
 		view.dirtyAll = true
@@ -1743,9 +1880,14 @@ function BG:OnEnable()
 			if on then
 				editWasOpen = BG:IsOpen() and true or false
 				if editWasOpen and not InCombatLockdown() then BG:Close() end
-			elseif editWasOpen then
-				editWasOpen = false
-				if not InCombatLockdown() then BG:Open() end
+			else
+				-- Edit mode places the window by its saved (bottom) anchor;
+				-- turn that back into a top anchor.
+				if not InCombatLockdown() then BG.PlaceTop(win, "Bags:main", Fallback()) end
+				if editWasOpen then
+					editWasOpen = false
+					if not InCombatLockdown() then BG:Open() end
+				end
 			end
 		end,
 	})
@@ -1753,14 +1895,19 @@ function BG:OnEnable()
 	Soul:On("ProfileChanged", function() BG:Apply() end)
 	Soul:On("ThemeChanged", function() BG:Apply() end)
 
+	-- The window has a place right away (a /reload in combat can open it
+	-- before the warm-up below runs).
+	win:SetScale(BG.WindowScale())
+	BG.PlaceTop(win, "Bags:main", Fallback())
+
 	-- Pre-build every slot button now, out of combat, so opening the bags in
 	-- combat never has to create one.
 	Soul:RunAfterCombat("bags:warm", function()
 		win:SetScale(BG.WindowScale())
-		Soul:Place(win, "Bags:main", Fallback())
 		ParkBlizzardBags(DB().enabled and true or false)
 		BG:ApplyChrome()
 		Refresh(true)
+		BG.PlaceTop(win, "Bags:main", Fallback())
 		if BG.Bank and BG.Bank.Enable then BG.Bank.Enable() end
 	end)
 end
