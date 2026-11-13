@@ -31,14 +31,29 @@ function Soul:StatusbarTexture()
 	return self:Media("statusbar", theme and theme.statusbar)
 end
 
+-- Text style (0.9.0). Modules pass "OUTLINE" to mean "the normal frame text
+-- style", so that value follows the theme setting (General > Look > Outline):
+--   SHADOW        no outline, soft drop shadow (default: the owner found the
+--                 black outline heavy and hard to read)
+--   OUTLINE / THICKOUTLINE / NONE   as named
+-- Any other explicit flag ("NONE" from a module) is used as given.
 function Soul:ApplyFont(fontString, size, flags)
 	local theme = self:Theme()
 	local path = self:Media("font", theme and theme.font)
-	local outline = flags or (theme and theme.fontOutline) or "OUTLINE"
-	if outline == "NONE" then outline = "" end
+	local style = theme and theme.fontOutline or "SHADOW"
+	local outline = flags or style
+	if flags == "OUTLINE" then outline = style end
+	local shadow = outline == "SHADOW"
+	if outline == "NONE" or shadow then outline = "" end
 	local ok = pcall(fontString.SetFont, fontString, path, size, outline)
 	if not ok then
-		pcall(fontString.SetFont, fontString, STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", size, "OUTLINE")
+		pcall(fontString.SetFont, fontString, STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", size, outline)
+	end
+	if shadow then
+		fontString:SetShadowColor(0, 0, 0, 0.9)
+		fontString:SetShadowOffset(1, -1)
+	elseif outline ~= "" then
+		fontString:SetShadowOffset(0, 0)
 	end
 end
 

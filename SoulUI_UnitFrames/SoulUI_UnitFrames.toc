@@ -2,7 +2,8 @@
 ## Title: SoulUI Unit Frames
 ## Notes: Player, target, focus, and pet frames
 ## Author: SoulBound
-## Version: 0.8.2
+## Version: 0.9.0
+## IconTexture: Interface\AddOns\SoulUI\Media\Textures\Logo
 ## Dependencies: SoulUI
 ## Category: SoulUI
 ## Group: SoulUI

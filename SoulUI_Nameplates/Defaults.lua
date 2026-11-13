@@ -19,6 +19,7 @@ SoulUI.Defaults.Nameplates = {
 	showCast = true,
 	castHeight = 12,
 	castIcon = true,
+	castClick = true, -- the cast bar is part of the click area (targets that enemy)
 	castFont = 0,         -- 0 = sized from the cast height
 	manageCVars = true,
 	showAll = false,

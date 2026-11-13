@@ -7,6 +7,7 @@ local UI = Soul.UI
 local W = Soul.Widgets
 
 local OUTLINES = {
+	{ value = "SHADOW", label = "Soft shadow" },
 	{ value = "NONE", label = "None" },
 	{ value = "OUTLINE", label = "Outline" },
 	{ value = "THICKOUTLINE", label = "Thick outline" },
@@ -66,8 +67,8 @@ local function BuildLook(col)
 		get = function() return Theme().font end,
 		set = function(v) Theme().font = v Soul:ApplyAllModules() end,
 	}, {
-		type = "dropdown", label = "Outline", items = OUTLINES, width = 150,
-		get = function() return Theme().fontOutline or "OUTLINE" end,
+		type = "dropdown", label = "Text style", items = OUTLINES, width = 150,
+		get = function() return Theme().fontOutline or "SHADOW" end,
 		set = function(v) Theme().fontOutline = v Soul:ApplyAllModules() end,
 	})
 	W.Section(col, "Bars")

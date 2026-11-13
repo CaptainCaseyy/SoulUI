@@ -2,6 +2,52 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-13 — laptop — 0.9.0 logo, clearer text, shields, clickable casts
+
+The owner asked for:
+- clearer text (the black outline was hard to read);
+- a customizable shield bar;
+- enemy cast bars you can click to target;
+- a check of nameplates and party frames in game;
+- the SoulBound website logo as the addon icon and an animated menu mark;
+- a bags redesign and EllesmereUI's quality-of-life features (separate entries below when they land).
+
+**Logo.**
+- **Source:** `SoulUI/Media/Source/soulbound-mark.svg`, a copy of `public/brand/mark.svg` from the owner's SoulBound website repo (`WoWWebsiteRepo`).
+- **Build:** `tools/build_logo.py` rasterizes it with Pillow, with no downloads: drawn at 4x and downsampled, even-odd holes, vertical gradients. It writes 256px TGAs with the same header as the other textures:
+  - `Logo.tga`: everything.
+  - `LogoBook.tga`: the open book.
+  - `LogoSoul.tga`: the swirl, the wisps and the star.
+  - `LogoSparkles.tga`: the sparkles.
+- **Addon icon:** every `.toc` now has `## IconTexture: Interface\AddOns\SoulUI\Media\Textures\Logo`, which shows in the addon list.
+- **Settings window (`Panel.lua`):** the mark is the three layers.
+  - On open, the soul rises 9px out of the book and fades in, then the sparkles fade in.
+  - While the window is open, the soul floats 1.5px, the sparkles twinkle and a soft blue glow breathes.
+  - The `breathe:Play()` / `breathe:Stop()` call sites are unchanged.
+
+**Text (`Core/Media.lua`, `Database.lua`, Look page).** Modules passed "OUTLINE" to `Soul:ApplyFont` everywhere, which ignored the theme. "OUTLINE" now means "the frame text style", which follows General > Look > Text style. The new default "SHADOW" draws no outline and a soft 1px drop shadow. Outline, Thick outline and None stay available.
+
+**Shields (`UnitFrames.lua`, Unit Frames > Shields).** The default stays the owner's pale wash. New options:
+- Placement: full height, bottom strip or top strip.
+- Pattern: solid, striped (Blizzard's tiled `Interface\RaidFrame\Shield-Overlay`) or the bar texture.
+- Color, plus shield opacity (past the fill) and overflow opacity (the pale band).
+
+**Clickable enemy cast bars (`Nameplates.lua`).** Clicking inside an enemy nameplate's frame targets it, and `C_NamePlate.SetNamePlateSize` sets that frame.
+- `NP:ApplyHitbox()` sizes it to the health bar plus the cast bar below it, with enemy hit insets of -10000 so the whole frame counts.
+- Our bar moves up by half the cast drop so both sit inside the frame.
+- It runs out of combat and is queued if needed. The setting is `castClick` (Nameplates > "Click the cast bar to target"). The same API is studied from Ellesmere's hitbox code; the code here is our own.
+
+**Party "Show while solo" never worked (`GroupFrames.lua`).** The visibility rule allowed solo, but the header was hard-coded `showSolo = false`. Fixed.
+
+**Checked in game:**
+- Text is shadowed, not outlined.
+- The party frame shows when "Show while solo" is on and hides at once when it is turned off.
+
+**Not checked:**
+- Enemy nameplates and the cast click: there are no enemies in town.
+- The logo textures: new files need a full client restart.
+- Shields under a real absorb.
+
 ## 2026-11-13 — laptop — 0.8.2 pale shield back, meter rank after restart
 
 - **Shield overflow (`UnitFrames.lua`).** The owner preferred the pale full-height wash from the right end, so the 0.8.1 bottom strip is reverted. Do not change it again without asking.

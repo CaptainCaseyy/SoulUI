@@ -689,7 +689,7 @@ function NP:AddPlate(_, unit)
 	-- mod can still attach icons to it. Our bar sits just above that frame.
 	visual:SetParent(plate)
 	visual:ClearAllPoints()
-	visual:SetPoint("CENTER", plate, "CENTER", 0, 0)
+	visual:SetPoint("CENTER", plate, "CENTER", 0, NP.hitShift or 0)
 	local level = plate:GetFrameLevel() or 1
 	visual:SetFrameLevel(level + 2)
 	-- Restyle only when settings changed or this plate's pixel size differs.
@@ -717,6 +717,40 @@ function NP:RemovePlate(_, unit)
 	if wasTarget then MarkTarget() end
 end
 
+-- Click area (0.9.0). The game targets an enemy when you click inside its
+-- nameplate's frame, and C_NamePlate.SetNamePlateSize sets that frame. Sizing
+-- it to the health bar plus the cast bar below it makes the cast bar a click
+-- target, so a dangerous cast can be targeted fast. The frame grows from its
+-- center, so our bar moves up by half the cast drop to keep both inside it.
+-- Out of combat only; friendly plates keep their own hit insets.
+function NP:ApplyHitbox()
+	if InCombatLockdown() then
+		Soul:RunAfterCombat("np:hitbox", function() NP:ApplyHitbox() end)
+		return
+	end
+	local cfg = DB()
+	if not (C_NamePlate and C_NamePlate.SetNamePlateSize) or not cfg.enabled then
+		NP.hitShift = 0
+		return
+	end
+	local drop = 0
+	if cfg.showCast ~= false and cfg.castClick ~= false then
+		drop = (cfg.castHeight or 12) + math.max(0, cfg.spacing or 2)
+	end
+	local width = cfg.width or 140
+	local height = (cfg.height or 16) + drop
+	pcall(C_NamePlate.SetNamePlateSize, width, height)
+	if C_NamePlateManager and C_NamePlateManager.SetNamePlateHitTestInsets and Enum and Enum.NamePlateType then
+		pcall(C_NamePlateManager.SetNamePlateHitTestInsets, Enum.NamePlateType.Enemy, -10000, -10000, -10000, -10000)
+	end
+	NP.hitShift = drop / 2
+	for _, visual in pairs(byUnit) do
+		if visual.plate then
+			visual:SetPoint("CENTER", visual.plate, "CENTER", 0, NP.hitShift)
+		end
+	end
+end
+
 function NP:ApplyCVars()
 	local cfg = DB()
 	if not cfg.manageCVars then return end
@@ -740,6 +774,7 @@ end
 
 function NP:Apply()
 	self:ApplyCVars()
+	self:ApplyHitbox()
 	styleGen = styleGen + 1
 	if not DB().enabled then
 		local units = {}
@@ -821,6 +856,7 @@ function NP:OnEnable()
 	Soul:On("ProfileChanged", function() NP:Apply() end)
 	Soul:On("ThemeChanged", function() NP:Apply() end)
 	self:ApplyCVars()
+	self:ApplyHitbox()
 	-- PLAYER_ENTERING_WORLD can already have fired by the time this addon
 	-- enables. Scan whatever plates are on screen now, or the first login
 	-- shows no nameplates until the next zone.

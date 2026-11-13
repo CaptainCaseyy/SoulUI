@@ -894,7 +894,9 @@ local function ConfigureHeader(header, kind, cfg)
 	header:SetAttribute("soul-width", w)
 	header:SetAttribute("soul-height", h)
 	header:SetAttribute("showPlayer", cfg.showPlayer and true or false)
-	header:SetAttribute("showSolo", false)
+	-- The visibility rule lets the party show while solo, but the header also
+	-- has to list a unit then: without this the switch did nothing (0.9.0).
+	header:SetAttribute("showSolo", kind == "party" and cfg.showSolo and true or false)
 	header:SetAttribute("sortMethod", "INDEX")
 	header:SetAttribute("sortDir", "ASC")
 	if kind == "party" then

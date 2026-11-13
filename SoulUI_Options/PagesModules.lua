@@ -221,6 +221,43 @@ local function BuildUnitFrames(col)
 	end
 	W.Row2(col, UFToggle("gloss", "Soft shading on the fill"), UFToggle("textShadow", "Text shadow"))
 	W.Row2(col, UFToggle("absorbs", "Shields"), UFToggle("healAbsorbs", "Heal absorbs"))
+	W.Section(col, "Shields", "how absorbs draw on the health bar")
+	local function shieldOff() return UF().absorbs == false end
+	W.Row2(col, {
+		type = "dropdown", label = "Placement", width = 170, disabled = shieldOff,
+		items = {
+			{ value = "wash", label = "Full height" },
+			{ value = "bottom", label = "Bottom strip" },
+			{ value = "top", label = "Top strip" },
+		},
+		get = function() return UF().shieldPlacement or "wash" end,
+		set = function(v) UF().shieldPlacement = v ApplyUF() end,
+	}, {
+		type = "dropdown", label = "Pattern", width = 170, disabled = shieldOff,
+		items = {
+			{ value = "solid", label = "Solid" },
+			{ value = "striped", label = "Striped" },
+			{ value = "bar", label = "Bar texture" },
+		},
+		get = function() return UF().shieldPattern or "solid" end,
+		set = function(v) UF().shieldPattern = v ApplyUF() end,
+	})
+	W.Row2(col, {
+		type = "slider", label = "Shield opacity", min = 0.05, max = 1, step = 0.05, disabled = shieldOff,
+		tooltip = "The shield drawn past the end of your health.",
+		get = function() return UF().shieldAlpha or 0.5 end,
+		set = function(v) UF().shieldAlpha = v ApplyUF() end,
+	}, {
+		type = "slider", label = "Overflow opacity", min = 0.05, max = 1, step = 0.05, disabled = shieldOff,
+		tooltip = "Shield that does not fit past your health, laid back over the bar from the right end (the pale band).",
+		get = function() return UF().overflowAlpha or 0.22 end,
+		set = function(v) UF().overflowAlpha = v ApplyUF() end,
+	})
+	W.Row(col, {
+		type = "color", label = "Shield color", disabled = shieldOff,
+		get = W.ColorGet(UF, "shieldColor", 0.6, 0.85, 1),
+		set = W.ColorSet(UF, "shieldColor", ApplyUF),
+	})
 	W.Row2(col, UFToggle("hoverHighlight", "Brighten on mouseover"), UFToggle("targetHighlight", "Outline your target", "A white outline on focus, target of target or pet when that unit is your target."))
 	W.Row2(col, UFToggle("tooltip", "Tooltip on mouseover"), UFToggle("raidIcon", "Raid marker"))
 	W.Row2(col, UFToggle("leaderIcon", "Leader crown"), UFToggle("combatIcon", "Combat icon on the player"))
@@ -289,6 +326,13 @@ local function BuildNameplates(col)
 		disabled = function() return off() or not NP().showCast end,
 		get = function() return NP().castFont or 0 end,
 		set = function(v) NP().castFont = v ApplyNP() end,
+	})
+	W.Row(col, {
+		type = "toggle", label = "Click the cast bar to target",
+		tooltip = "Makes an enemy's cast bar part of its nameplate's click area, so you can click the cast to target that enemy. Applies out of combat.",
+		disabled = function() return off() or not NP().showCast end,
+		get = function() return NP().castClick ~= false end,
+		set = function(v) NP().castClick = Bool(v) ApplyNP() end,
 	})
 	W.Section(col, "Look")
 	W.Row2(col, {

@@ -301,6 +301,68 @@ local function UpdateFrame(frame, event)
 	end
 end
 
+-- Shield look (0.9.0), all player-configurable (Unit Frames > Shields):
+--   shieldPlacement  "wash" (full height) | "bottom" | "top" (a strip)
+--   shieldPattern    "solid" | "striped" (Blizzard's tiled shield overlay) | "bar" (bar texture)
+--   shieldColor, shieldAlpha (shield past the health fill), overflowAlpha
+--   (the part that does not fit, laid back over the fill from the right end).
+-- Defaults are the pale wash the owner chose. Only anchors, size and
+-- textures change here: these are our own non-secure bars, safe in combat.
+local SHIELD_STRIPES = "Interface\\RaidFrame\\Shield-Overlay"
+
+local function ShieldTexture(bar, pattern)
+	if pattern == "striped" then
+		bar:SetStatusBarTexture(SHIELD_STRIPES)
+		local tex = bar:GetStatusBarTexture()
+		if tex then
+			pcall(tex.SetTexture, tex, SHIELD_STRIPES, "REPEAT", "REPEAT")
+			if tex.SetHorizTile then tex:SetHorizTile(true) end
+			if tex.SetVertTile then tex:SetVertTile(true) end
+		end
+	elseif pattern == "bar" then
+		bar:SetStatusBarTexture(Soul:StatusbarTexture())
+	else
+		bar:SetStatusBarTexture(WHITE)
+	end
+end
+
+local function StyleShield(frame, db)
+	local health = frame.Health
+	local fill = health:GetStatusBarTexture()
+	local absorb, over = health._absorb, health._overAbsorb
+	local placement = db.shieldPlacement or "wash"
+	local pattern = db.shieldPattern or "solid"
+	local c = type(db.shieldColor) == "table" and db.shieldColor or nil
+	local r, g, b = c and c[1] or 0.6, c and c[2] or 0.85, c and c[3] or 1
+	local alpha = db.shieldAlpha or 0.5
+	local overR, overG, overB = c and c[1] or 0.75, c and c[2] or 0.9, c and c[3] or 1
+	local overAlpha = db.overflowAlpha or 0.22
+	ShieldTexture(absorb, pattern)
+	ShieldTexture(over, pattern)
+	absorb:SetStatusBarColor(r, g, b, alpha)
+	over:SetStatusBarColor(overR, overG, overB, overAlpha)
+	local h = health:GetHeight() or 20
+	local strip = math.max(2, math.floor(h * 0.2 + 0.5))
+	absorb:ClearAllPoints()
+	over:ClearAllPoints()
+	if placement == "bottom" then
+		absorb:SetPoint("BOTTOMLEFT", fill, "BOTTOMRIGHT")
+		absorb:SetHeight(strip)
+		over:SetPoint("BOTTOMRIGHT", health, "BOTTOMRIGHT")
+		over:SetHeight(strip)
+	elseif placement == "top" then
+		absorb:SetPoint("TOPLEFT", fill, "TOPRIGHT")
+		absorb:SetHeight(strip)
+		over:SetPoint("TOPRIGHT", health, "TOPRIGHT")
+		over:SetHeight(strip)
+	else
+		absorb:SetPoint("TOPLEFT", fill, "TOPRIGHT")
+		absorb:SetPoint("BOTTOMLEFT", fill, "BOTTOMRIGHT")
+		over:SetPoint("TOPRIGHT", health, "TOPRIGHT")
+		over:SetPoint("BOTTOMRIGHT", health, "BOTTOMRIGHT")
+	end
+end
+
 -- Colors, textures and fonts that do not move anything: safe any time.
 local function Skin(frame)
 	local db = DB()
@@ -323,6 +385,7 @@ local function Skin(frame)
 	frame.Health._overClip:SetAlpha(1)
 	frame.Health._overAbsorb:SetAlpha(db.absorbs == false and 0 or 1)
 	frame.Health._healAbsorb:SetAlpha(db.healAbsorbs == false and 0 or 1)
+	StyleShield(frame, db)
 
 	local shadow = db.textShadow ~= false
 	for _, fs in ipairs(frame._soulTexts) do
