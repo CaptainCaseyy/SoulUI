@@ -2,6 +2,23 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-13 — laptop — 0.9.18 bank checked at a banker
+
+**Bank tab buttons (`Bank.lua`).** A tab with no chosen icon carries the game's question mark (134400), so three unset tabs showed as red and grey question marks. That looked like an error. Such a tab now shows its number, white when selected and dim otherwise.
+
+**Tooltips in a row (`UIKit.lua` `ShowTip`).** A tooltip normally sits to the right of its owner, which on the tab strip covered the next tab. An owner with `_tipBelow` gets its tooltip below instead; the bank tabs use it.
+
+**Checked in game, at a banker:**
+- The bank opens with the bags.
+- Bank and Warband switch; Warband shows BoE tags and "Deposit warbound".
+- The tab buttons switch the contents.
+- The X ends the bank visit and closes the bags.
+- "Blizzard bank" hands the visit to the stock frame.
+
+**Not checked:**
+- Deposit reagents, deposit warbound, sort, and right-click deposit: these move the owner's items.
+- Vendor repair and sell junk.
+
 ## 2026-11-13 — laptop — 0.9.17 keystone and buff check windows, visible chat copy button
 
 **Keystone popup (`/soulkeys`) and ready-check buff list (`Raid.lua`).** Both were plain dark boxes with a letter "x". They now use the shared `UI.Window`:

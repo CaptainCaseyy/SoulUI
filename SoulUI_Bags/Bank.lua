@@ -124,8 +124,21 @@ local function PaintTabs()
 		if tab then
 			button.tabID = tab.ID
 			button.tabTitle = tab.name
-			button.icon:SetTexture(tab.icon or 134400)
+			-- A tab with no chosen icon carries the question mark (134400);
+			-- show its number instead so it does not read as an error.
+			local icon = tab.icon
+			local blank = icon == nil or icon == 0 or icon == 134400
+				or icon == "Interface\\Icons\\INV_Misc_QuestionMark"
+			button.icon:SetTexture(icon or 134400)
+			button.icon:SetShown(not blank)
+			button.number:SetText(i)
+			button.number:SetShown(blank)
 			local on = tab.ID == current
+			if on then
+				button.number:SetTextColor(1, 1, 1)
+			else
+				button.number:SetTextColor(UI.C.dim[1], UI.C.dim[2], UI.C.dim[3])
+			end
 			if on then
 				button.edge:SetColor(r, g, b, 1)
 				name = tab.name
@@ -313,12 +326,16 @@ local function Build()
 		button.icon:SetPoint("TOPLEFT", 1, -1)
 		button.icon:SetPoint("BOTTOMRIGHT", -1, 1)
 		button.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+		button.number = UI.Text(button, 15, UI.C.dim, "CENTER")
+		button.number:SetPoint("CENTER", 0, 0)
+		button.number:Hide()
 		button:SetScript("OnClick", function(self)
 			if not self.tabID then return end
 			selected[bankType] = self.tabID
 			Discover()
 			Bank.Refresh(true)
 		end)
+		button._tipBelow = true
 		UI.Tip(button, nil, function() return button.tabTitle end)
 		button:Hide()
 		tabButtons[i] = button

@@ -458,7 +458,13 @@ function UI.ShowTip(owner, title, body)
 	t:ClearAllPoints()
 	-- Beside the owner, not above it, so the tooltip never covers the row
 	-- you are about to move to. The clamp keeps it on screen.
-	t:SetPoint("TOPLEFT", owner, "TOPRIGHT", 10, 0)
+	-- A button in a horizontal strip (bank tabs) sets _tipBelow, so the
+	-- tooltip does not sit on its neighbours.
+	if owner._tipBelow then
+		t:SetPoint("TOPLEFT", owner, "BOTTOMLEFT", 0, -6)
+	else
+		t:SetPoint("TOPLEFT", owner, "TOPRIGHT", 10, 0)
+	end
 	t:SetAlpha(0)
 	t:Show()
 	UI.Animate("tooltip", 0.14, function(p) t:SetAlpha(p) end)
