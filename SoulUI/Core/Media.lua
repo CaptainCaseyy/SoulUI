@@ -11,6 +11,7 @@ if LSM then
 	-- Bundled UI font: Barlow Semi Condensed (SIL Open Font License 1.1,
 	-- Media/Fonts/OFL-Barlow.txt). Also usable on frames through the font lists.
 	LSM:Register("font", "SoulUI Barlow", "Interface\\AddOns\\SoulUI\\Media\\Fonts\\BarlowSemiCondensed-Medium.ttf")
+	LSM:Register("statusbar", "SoulUI Smooth", "Interface\\AddOns\\SoulUI\\Media\\Textures\\Smooth.tga")
 	LSM:Register("font", "SoulUI Barlow SemiBold", "Interface\\AddOns\\SoulUI\\Media\\Fonts\\BarlowSemiCondensed-SemiBold.ttf")
 end
 

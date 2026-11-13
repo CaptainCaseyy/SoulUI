@@ -41,6 +41,24 @@ for (const file of files) {
     problems++;
     continue;
   }
+  // Invalid escapes in quoted strings ("Interface\AddOns" written with one
+  // backslash). Lua 5.1 rejects them at load, luaparse does not.
+  src.split(/\r?\n/).forEach((line, i) => {
+    if (/^\s*--/.test(line)) return;
+    const strings = line.match(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g) || [];
+    for (const s of strings) {
+      for (let k = 1; k < s.length - 1; k++) {
+        if (s[k] !== "\\") continue;
+        const next = s[k + 1];
+        if (!/[\\nrtabfv"'0-9x]/.test(next)) {
+          console.log(`${rel}:${i + 1}: invalid string escape \\${next} in ${s}`);
+          problems++;
+          break;
+        }
+        k++; // skip the escaped character
+      }
+    }
+  });
   // Find assignments to globals.
   const visit = (node) => {
     if (!node || typeof node !== "object") return;

@@ -2,7 +2,7 @@
 ## Title: SoulUI Nameplates
 ## Notes: Enemy and neutral nameplates
 ## Author: SoulBound
-## Version: 0.7.13
+## Version: 0.8.0
 ## Dependencies: SoulUI
 ## Category: SoulUI
 ## Group: SoulUI

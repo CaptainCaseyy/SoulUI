@@ -80,6 +80,54 @@ local GLYPHS = {
 	["chevron-right"] = { { -0.14, 0.32, 0.2, -0.02 }, { 0.2, 0.02, -0.14, -0.32 } },
 	check = { { -0.34, 0.0, -0.08, -0.26 }, { -0.1, -0.26, 0.36, 0.24 } },
 	plus = { { -0.34, 0, 0.34, 0 }, { 0, -0.34, 0, 0.34 } },
+	-- Nav icons (0.8.0): drawn line icons, one stroke weight.
+	move = {
+		{ -0.42, 0, 0.42, 0 }, { 0, -0.42, 0, 0.42 },
+		{ -0.42, 0, -0.26, 0.14 }, { -0.42, 0, -0.26, -0.14 },
+		{ 0.42, 0, 0.26, 0.14 }, { 0.42, 0, 0.26, -0.14 },
+		{ 0, 0.42, 0.14, 0.26 }, { 0, 0.42, -0.14, 0.26 },
+		{ 0, -0.42, 0.14, -0.26 }, { 0, -0.42, -0.14, -0.26 },
+	},
+	sliders = {
+		{ -0.4, 0.24, 0.4, 0.24 }, { -0.4, -0.24, 0.4, -0.24 },
+		{ -0.14, 0.38, -0.14, 0.1 }, { 0.16, -0.1, 0.16, -0.38 },
+	},
+	user = {
+		{ -0.12, 0.38, 0.12, 0.38 }, { -0.12, 0.38, -0.18, 0.18 }, { 0.12, 0.38, 0.18, 0.18 },
+		{ -0.18, 0.18, -0.06, 0.06 }, { 0.18, 0.18, 0.06, 0.06 },
+		{ -0.36, -0.38, -0.3, -0.12 }, { -0.3, -0.12, 0.3, -0.12 }, { 0.3, -0.12, 0.36, -0.38 },
+	},
+	frame = {
+		{ -0.42, 0.26, 0.42, 0.26 }, { 0.42, 0.26, 0.42, -0.26 },
+		{ 0.42, -0.26, -0.42, -0.26 }, { -0.42, -0.26, -0.42, 0.26 },
+		{ -0.42, -0.02, 0.18, -0.02 },
+	},
+	plate = {
+		{ -0.42, 0.06, 0.42, 0.06 }, { 0.42, 0.06, 0.42, -0.14 },
+		{ 0.42, -0.14, -0.42, -0.14 }, { -0.42, -0.14, -0.42, 0.06 },
+		{ -0.24, 0.3, 0.24, 0.3 },
+	},
+	group = {
+		{ -0.4, 0.36, 0.4, 0.36 }, { -0.4, 0.12, 0.4, 0.12 },
+		{ -0.4, -0.12, 0.4, -0.12 }, { -0.4, -0.36, 0.4, -0.36 },
+	},
+	grid = {
+		{ -0.4, 0.4, 0.4, 0.4 }, { -0.4, 0, 0.4, 0 }, { -0.4, -0.4, 0.4, -0.4 },
+		{ -0.4, 0.4, -0.4, -0.4 }, { 0, 0.4, 0, -0.4 }, { 0.4, 0.4, 0.4, -0.4 },
+	},
+	pips = {
+		{ -0.42, -0.1, -0.2, -0.1 }, { -0.1, -0.1, 0.1, -0.1 }, { 0.2, -0.1, 0.42, -0.1 },
+		{ -0.42, 0.1, -0.2, 0.1 }, { -0.1, 0.1, 0.1, 0.1 }, { 0.2, 0.1, 0.42, 0.1 },
+	},
+	bars = {
+		{ -0.4, 0.3, 0.4, 0.3 }, { -0.4, 0.04, 0.18, 0.04 },
+		{ -0.4, -0.22, -0.02, -0.22 }, { -0.4, -0.42, -0.4, 0.42 },
+	},
+	search = {
+		{ -0.3, 0.34, 0.06, 0.34 }, { 0.06, 0.34, 0.18, 0.18 }, { 0.18, 0.18, 0.18, -0.02 },
+		{ 0.18, -0.02, 0.06, -0.16 }, { 0.06, -0.16, -0.3, -0.16 }, { -0.3, -0.16, -0.42, -0.02 },
+		{ -0.42, -0.02, -0.42, 0.18 }, { -0.42, 0.18, -0.3, 0.34 }, { 0.12, -0.12, 0.42, -0.42 },
+	},
 }
 
 function UI.Glyph(parent, kind, size, color, thickness)
@@ -226,17 +274,189 @@ function UI.Text(parent, size, color, justify, layer)
 	return text
 end
 
+------------------------------------------------------------------------------
+-- Motion (0.8.0). One driver frame; its OnUpdate runs only while a tween is
+-- active. A tween is keyed: starting the same key again replaces it from
+-- where it is. account.motion = false makes every tween jump to its end.
+--   UI.Animate(key, seconds, step(p), done, ease)   p eases 0 -> 1
+------------------------------------------------------------------------------
+
+UI.TEX = "Interface\\AddOns\\SoulUI\\Media\\Textures\\"
+
+local function OutCubic(t)
+	local u = 1 - t
+	return 1 - u * u * u
+end
+local function OutBack(t)
+	local c = 1.4
+	local u = t - 1
+	return 1 + (c + 1) * u * u * u + c * u * u
+end
+UI.Ease = { outCubic = OutCubic, outBack = OutBack, linear = function(t) return t end }
+
+function UI.Motion()
+	local account = Soul.db and Soul.db.account
+	return not (account and account.motion == false)
+end
+
+function UI.Lerp(a, b, t)
+	return a + (b - a) * t
+end
+
+local slots, active, finished = {}, {}, {}
+local activeCount = 0
+local driver = CreateFrame("Frame")
+driver:Hide()
+driver:SetScript("OnUpdate", function(self, dt)
+	local n = 0
+	for key in pairs(active) do
+		local tw = slots[key]
+		tw.t = tw.t + dt
+		local p = tw.t / tw.d
+		if p >= 1 then
+			n = n + 1
+			finished[n] = key
+		else
+			local ok, err = pcall(tw.step, tw.ease(p))
+			if not ok then Soul:Debug("tween", key, err) end
+		end
+	end
+	-- Finish outside the traversal: a done callback may start new tweens.
+	for i = 1, n do
+		local key = finished[i]
+		finished[i] = nil
+		local tw = slots[key]
+		if active[key] then
+			active[key] = nil
+			activeCount = activeCount - 1
+			pcall(tw.step, 1)
+			local done = tw.done
+			tw.done = nil
+			if done then pcall(done) end
+		end
+	end
+	if activeCount <= 0 then
+		activeCount = 0
+		self:Hide()
+	end
+end)
+
+function UI.Animate(key, seconds, step, done, ease)
+	local tw = slots[key]
+	if not tw then
+		tw = {}
+		slots[key] = tw
+	end
+	tw.t, tw.d = 0, math.max(0.001, seconds or 0.18)
+	tw.step, tw.done, tw.ease = step, done, ease or OutCubic
+	if not UI.Motion() or (seconds or 0) <= 0 then
+		if active[key] then
+			active[key] = nil
+			activeCount = activeCount - 1
+		end
+		pcall(step, 1)
+		tw.done = nil
+		if done then pcall(done) end
+		return
+	end
+	if not active[key] then
+		active[key] = true
+		activeCount = activeCount + 1
+	end
+	driver:Show()
+end
+
+function UI.StopAnimation(key)
+	if active[key] then
+		active[key] = nil
+		activeCount = activeCount - 1
+	end
+end
+
+------------------------------------------------------------------------------
+-- Tooltip (0.8.0): our own surface instead of GameTooltip. Fades in after a
+-- short hover so sweeping the mouse across rows does not flash tooltips.
+------------------------------------------------------------------------------
+
+local tip, tipGen = nil, 0
+
+local function EnsureTip()
+	if tip then return tip end
+	tip = CreateFrame("Frame", "SoulUI_Tooltip", UIParent)
+	tip:SetFrameStrata("TOOLTIP")
+	tip:SetFrameLevel(400)
+	tip:SetClampedToScreen(true)
+	tip:EnableMouse(false)
+	tip:Hide()
+	UI.Fill(tip, { 0.035, 0.04, 0.05, 0.97 })
+	UI.Edge(tip, 1, 1, 1, 0.12)
+	tip.accent = tip:CreateTexture(nil, "ARTWORK")
+	tip.accent:SetPoint("TOPLEFT", 1, -1)
+	tip.accent:SetPoint("TOPRIGHT", -1, -1)
+	tip.accent:SetHeight(1)
+	tip.title = UI.Text(tip, 14, UI.C.text)
+	tip.title:SetPoint("TOPLEFT", 12, -10)
+	tip.body = UI.Text(tip, 13, UI.C.dim)
+	tip.body:SetWordWrap(true)
+	tip.body:SetJustifyV("TOP")
+	tip.body:SetSpacing(2)
+	UI.OnAccent(function(r, g, b) tip.accent:SetColorTexture(r, g, b, 0.7) end)
+	return tip
+end
+
+function UI.HideTip()
+	tipGen = tipGen + 1
+	if tip then tip:Hide() end
+end
+
+function UI.ShowTip(owner, title, body)
+	local t = EnsureTip()
+	local width = 0
+	t.title:SetText(title or "")
+	t.title:SetShown(title ~= nil)
+	if title then width = t.title:GetStringWidth() or 0 end
+	t.body:ClearAllPoints()
+	if title then
+		t.body:SetPoint("TOPLEFT", t.title, "BOTTOMLEFT", 0, -5)
+	else
+		t.body:SetPoint("TOPLEFT", 12, -10)
+	end
+	t.body:SetWidth(280)
+	t.body:SetText(body or "")
+	t.body:SetShown(body ~= nil)
+	local bodyW = 0
+	if body then
+		bodyW = t.body.GetUnboundedStringWidth and t.body:GetUnboundedStringWidth() or 280
+		bodyW = math.min(280, bodyW)
+	end
+	if body and bodyW < 280 then t.body:SetWidth(math.max(bodyW, 1) + 2) end
+	width = math.max(width, body and t.body:GetWidth() or 0)
+	local height = 20 + (title and (t.title:GetStringHeight() or 14) or 0)
+		+ (body and ((t.body:GetStringHeight() or 14) + (title and 5 or 0)) or 0)
+	t:SetSize(math.floor(width + 26), math.floor(height + 2))
+	t:SetScale(owner:GetEffectiveScale() / UIParent:GetEffectiveScale())
+	t:ClearAllPoints()
+	-- Beside the owner, not above it, so the tooltip never covers the row
+	-- you are about to move to. The clamp keeps it on screen.
+	t:SetPoint("TOPLEFT", owner, "TOPRIGHT", 10, 0)
+	t:SetAlpha(0)
+	t:Show()
+	UI.Animate("tooltip", 0.14, function(p) t:SetAlpha(p) end)
+end
+
 -- Tooltip on any frame. text may be a function.
 function UI.Tip(frame, title, text)
 	frame:HookScript("OnEnter", function(self)
 		local body = type(text) == "function" and text() or text
 		if not title and not body then return end
-		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		if title then GameTooltip:AddLine(title, 1, 1, 1) end
-		if body then GameTooltip:AddLine(body, 0.75, 0.75, 0.8, true) end
-		GameTooltip:Show()
+		tipGen = tipGen + 1
+		local gen = tipGen
+		C_Timer.After(0.25, function()
+			if gen ~= tipGen or not self:IsVisible() or not self:IsMouseOver() then return end
+			UI.ShowTip(self, title, body)
+		end)
 	end)
-	frame:HookScript("OnLeave", function() GameTooltip:Hide() end)
+	frame:HookScript("OnLeave", function() UI.HideTip() end)
 end
 
 -- Movable window with a title band and a close button. The position is

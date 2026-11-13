@@ -26,7 +26,7 @@ Soul.Widgets = W
 -- Pages.lua publishes helpers on Soul.Options before Panel.lua (loaded last) runs.
 Soul.Options = Soul.Options or {}
 
-local ROW_H = 52
+local ROW_H = 42
 local PAD = 48   -- page inset, matches Panel.lua GUTTER
 local INSET = 22 -- label / control inset inside a section block
 local COL_GAP = 36
@@ -51,10 +51,10 @@ end
 local function CloseCard(col)
 	local card = col.card
 	if not card then return end
-	col.y = col.y - 16
+	col.y = col.y - 6
 	card:SetHeight(math.max(8, card._top - col.y))
 	col.card = nil
-	col.y = col.y - 28
+	col.y = col.y - 24
 end
 
 local function OpenCard(col)
@@ -63,13 +63,13 @@ local function OpenCard(col)
 	card:SetPoint("TOPLEFT", col.parent, "TOPLEFT", PAD, col.y)
 	card:SetPoint("TOPRIGHT", col.parent, "TOPRIGHT", -PAD, col.y)
 	card._top = col.y
+	-- One faint surface per section; no border. Rows carry their own hover.
 	local bg = card:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	bg:SetColorTexture(0, 0, 0, 0.32)
-	UI.Edge(card, 1, 1, 1, 0.07)
+	bg:SetColorTexture(1, 1, 1, 0.028)
 	col.card = card
 	col.firstRow = true
-	col.y = col.y - 14
+	col.y = col.y - 6
 end
 
 function W.Finish(col)
@@ -111,15 +111,20 @@ end
 
 function W.Section(col, text, hint)
 	CloseCard(col)
-	local font = UI.Text(col.parent, 11, UI.C.faint)
+	-- Small accent tick, then the uppercase label.
+	local tick = col.parent:CreateTexture(nil, "ARTWORK")
+	tick:SetSize(10, 2)
+	tick:SetPoint("TOPLEFT", col.parent, "TOPLEFT", PAD, col.y - 5)
+	UI.OnAccent(function(r, g, b) tick:SetColorTexture(r, g, b, 1) end)
+	local font = UI.Text(col.parent, 11, UI.C.dim)
 	font:SetText(string.upper(text))
-	font:SetPoint("TOPLEFT", col.parent, "TOPLEFT", PAD, col.y)
+	font:SetPoint("TOPLEFT", col.parent, "TOPLEFT", PAD + 16, col.y)
 	if hint then
 		local small = UI.Text(col.parent, 12, UI.C.dim)
 		small:SetText(hint)
 		small:SetPoint("LEFT", font, "RIGHT", 10, 0)
 	end
-	col.y = col.y - 22
+	col.y = col.y - 20
 	col.stripe = 0
 	col.section = text
 	OpenCard(col)
@@ -199,6 +204,10 @@ end
 local function Control(col, host, spec)
 	local label = UI.Text(host, 15, UI.C.text)
 	label:SetPoint("LEFT", INSET, 0)
+	-- Long labels wrap to a second line instead of being cut off.
+	label:SetWordWrap(true)
+	if label.SetMaxLines then label:SetMaxLines(2) end
+	label:SetJustifyV("MIDDLE")
 	label:SetText(spec.label or "")
 	local control
 	local refresh
@@ -215,7 +224,7 @@ local function Control(col, host, spec)
 			set(v)
 		end, spec.step)
 		box:SetPoint("RIGHT", -INSET, 0)
-		local slider = UI.Slider(host, spec.width or 168, spec.min, spec.max, spec.step or 1, spec.get, function(v)
+		local slider = UI.Slider(host, spec.width or 128, spec.min, spec.max, spec.step or 1, spec.get, function(v)
 			set(v)
 			box.Refresh()
 		end)
@@ -242,7 +251,7 @@ local function Control(col, host, spec)
 		local items = spec.items
 		if kind == "font" then items = function() return UI.MediaItems("font") end end
 		if kind == "statusbar" then items = function() return UI.MediaItems("statusbar") end end
-		control = UI.Dropdown(host, spec.width or 210, items, spec.get, set)
+		control = UI.Dropdown(host, math.min(spec.width or 180, 190), items, spec.get, set)
 		control:SetPoint("RIGHT", -INSET, 0)
 		refresh = control.Refresh
 	elseif kind == "color" then

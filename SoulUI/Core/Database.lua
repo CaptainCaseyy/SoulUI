@@ -5,9 +5,9 @@ local Soul = SoulUI
 local THEME_DEFAULTS = {
 	accent = { r = 0, g = 0.93, b = 1 },
 	accentUseClass = false,
-	font = "Friz Quadrata TT",
+	font = "SoulUI Barlow SemiBold",
 	fontOutline = "OUTLINE",
-	statusbar = "SoulUI Flat",
+	statusbar = "SoulUI Smooth",
 	background = { r = 0.06, g = 0.06, b = 0.07, a = 0.92 },
 }
 

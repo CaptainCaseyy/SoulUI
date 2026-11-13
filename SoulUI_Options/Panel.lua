@@ -30,10 +30,10 @@ Soul.Options = Soul.Options or {}
 
 local WIDTH, HEIGHT = 1280, 840
 local SIDEBAR = 280
-local HEADER = 124
+local HEADER = 104
 local WHITE = "Interface\\Buttons\\WHITE8X8"
-local TABS = 52
-local FOOTER = 78
+local TABS = 44
+local FOOTER = 64
 local CONTENT_W = WIDTH - SIDEBAR
 local GUTTER = 48 -- content inset, matches Widgets PAD
 
@@ -54,7 +54,17 @@ local function Hairline(parent, layer)
 end
 
 -- Surfaces: navy content, a darker sidebar, a 1px frame.
-UI.Fill(panel, UI.C.panel, "BACKGROUND", -8)
+UI.Fill(panel, UI.C.panel, "BACKGROUND", -7)
+-- Soft drop shadow: a bundled 64px black falloff, 9-sliced so the corners
+-- stay round at any window size. It hangs outside the frame, lower and wider.
+local shadow = panel:CreateTexture(nil, "BACKGROUND", nil, -8)
+shadow:SetTexture(UI.TEX .. "Shadow.tga")
+if shadow.SetTextureSliceMargins then
+	pcall(shadow.SetTextureSliceMargins, shadow, 24, 24, 24, 24)
+	if shadow.SetTextureSliceMode then pcall(shadow.SetTextureSliceMode, shadow, 0) end
+end
+shadow:SetPoint("TOPLEFT", -22, 14)
+shadow:SetPoint("BOTTOMRIGHT", 22, -30)
 local rim = CreateFrame("Frame", nil, panel)
 rim:SetAllPoints()
 rim:SetFrameLevel(panel:GetFrameLevel() + 20)
@@ -108,16 +118,8 @@ sideRule:SetWidth(1)
 local function Disc(parent, size, layer)
 	local tex = parent:CreateTexture(nil, layer or "ARTWORK")
 	tex:SetSize(size, size)
-	tex:SetColorTexture(1, 1, 1, 1)
-	if parent.CreateMaskTexture and tex.AddMaskTexture then
-		pcall(function()
-			local mask = parent:CreateMaskTexture()
-			mask:SetSize(size, size)
-			mask:SetPoint("CENTER", tex, "CENTER", 0, 0)
-			mask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-			tex:AddMaskTexture(mask)
-		end)
-	end
+	-- Bundled antialiased disc (0.8.0); tint with SetVertexColor.
+	tex:SetTexture(UI.TEX .. "Circle.tga")
 	return tex
 end
 
@@ -130,7 +132,7 @@ local function PowerMark(parent)
 	ring:SetPoint("CENTER")
 	local hole = Disc(host, 9, "OVERLAY")
 	hole:SetPoint("CENTER")
-	hole:SetColorTexture(UI.C.sidebar[1], UI.C.sidebar[2], UI.C.sidebar[3], 1)
+	hole:SetVertexColor(UI.C.sidebar[1], UI.C.sidebar[2], UI.C.sidebar[3], 1)
 	local stem = host:CreateTexture(nil, "OVERLAY", nil, 2)
 	stem:SetSize(2, 6)
 	stem:SetPoint("TOP", host, "TOP", 0, 1)
@@ -147,11 +149,35 @@ brand:SetPoint("TOPLEFT")
 brand:SetPoint("TOPRIGHT")
 brand:SetHeight(88)
 Mover(brand)
-local mark = Disc(brand, 28, "ARTWORK")
+local markGlow = brand:CreateTexture(nil, "BACKGROUND", nil, 1)
+markGlow:SetTexture(UI.TEX .. "Glow.tga")
+markGlow:SetBlendMode("ADD")
+markGlow:SetSize(84, 84)
+local mark = Disc(brand, 26, "ARTWORK")
 mark:SetPoint("LEFT", 26, 0)
-UI.OnAccent(function(r, g, b) mark:SetVertexColor(r, g, b, 1) end)
+markGlow:SetPoint("CENTER", mark, "CENTER")
+local markRing = brand:CreateTexture(nil, "ARTWORK", nil, 1)
+markRing:SetTexture(UI.TEX .. "Ring.tga")
+markRing:SetSize(36, 36)
+markRing:SetPoint("CENTER", mark, "CENTER")
+local markCore = Disc(brand, 9, "OVERLAY")
+markCore:SetPoint("CENTER", mark, "CENTER")
+markCore:SetVertexColor(1, 1, 1, 0.9)
+UI.OnAccent(function(r, g, b)
+	mark:SetVertexColor(r, g, b, 1)
+	markRing:SetVertexColor(r, g, b, 0.35)
+	markGlow:SetVertexColor(r, g, b, 0.35)
+end)
+-- A slow breathing glow on the mark: the one ambient motion in the window.
+local breathe = markGlow:CreateAnimationGroup()
+breathe:SetLooping("BOUNCE")
+local breatheAlpha = breathe:CreateAnimation("Alpha")
+breatheAlpha:SetFromAlpha(1)
+breatheAlpha:SetToAlpha(0.45)
+breatheAlpha:SetDuration(2.4)
+breatheAlpha:SetSmoothing("IN_OUT")
 local brandName = UI.Text(brand, 24, UI.C.text)
-brandName:SetPoint("LEFT", mark, "RIGHT", 12, 0)
+brandName:SetPoint("LEFT", mark, "RIGHT", 16, 0)
 brandName:SetText("SoulUI")
 
 -- Footer of the sidebar: active profile (click: Profiles page) and version.
@@ -202,14 +228,20 @@ header:SetPoint("TOPLEFT")
 header:SetPoint("TOPRIGHT")
 header:SetHeight(HEADER)
 Mover(header)
-local pageTitle = UI.Text(header, 36, UI.C.text)
-pageTitle:SetPoint("TOPLEFT", GUTTER, -28)
+local headerGlow = header:CreateTexture(nil, "BACKGROUND", nil, -6)
+headerGlow:SetTexture(UI.TEX .. "Glow.tga")
+headerGlow:SetBlendMode("ADD")
+headerGlow:SetSize(620, 240)
+headerGlow:SetPoint("CENTER", header, "TOPLEFT", GUTTER + 160, -6)
+UI.OnAccent(function(r, g, b) headerGlow:SetVertexColor(r, g, b, 0.13) end)
+local pageTitle = UI.Text(header, 30, UI.C.text)
+pageTitle:SetPoint("TOPLEFT", GUTTER, -26)
 local pageDesc = UI.Text(header, 14, UI.C.dim)
 pageDesc:SetPoint("TOPLEFT", pageTitle, "BOTTOMLEFT", 0, -4)
 pageDesc:SetPoint("RIGHT", -64, 0)
 
-local close = UI.IconButton(header, "close", 28, function() Soul.Options.Close() end)
-close:SetPoint("TOPRIGHT", -16, -16)
+local close = UI.IconButton(header, "close", 30, function() Soul.Options.Close() end)
+close:SetPoint("TOPRIGHT", -18, -18)
 
 local tabBar = CreateFrame("Frame", nil, content)
 tabBar:SetPoint("TOPLEFT", header, "BOTTOMLEFT")
@@ -243,8 +275,23 @@ UI.OnAccent(function(r, g, b)
 	end
 end)
 
-local pageSearch = SearchBox(tabBar, 240, 34, "Search this page", 14)
-pageSearch:SetPoint("RIGHT", -GUTTER + 8, 2)
+-- The page search lives in the header, so pages without tabs need no tab band.
+local pageSearch = SearchBox(header, 220, 32, "Search this page", 13)
+pageSearch:SetPoint("RIGHT", close, "LEFT", -14, 0)
+pageDesc:SetPoint("RIGHT", pageSearch, "LEFT", -24, 0)
+for _, decoration in ipairs({ flareL, flareR, bloom }) do decoration:Hide() end
+local tabRule = Hairline(tabBar)
+tabRule:SetPoint("BOTTOMLEFT", GUTTER - 12, 0)
+tabRule:SetPoint("BOTTOMRIGHT", -GUTTER + 12, 0)
+tabRule:SetHeight(1)
+-- One underline that slides to the active tab.
+local tabLine = tabBar:CreateTexture(nil, "OVERLAY")
+tabLine:SetHeight(2)
+tabLine:SetPoint("BOTTOMLEFT", GUTTER, 0)
+tabLine:SetWidth(40)
+tabLine:Hide()
+UI.OnAccent(function(r, g, b) tabLine:SetColorTexture(r, g, b, 1) end)
+local tabLineX, tabLineW = GUTTER, 40
 
 local footer = CreateFrame("Frame", nil, content)
 footer:SetPoint("BOTTOMLEFT")
@@ -255,11 +302,11 @@ footRule:SetPoint("TOPLEFT")
 footRule:SetPoint("TOPRIGHT")
 footRule:SetHeight(1)
 
-local closeButton = UI.Button(footer, "Close", 140, 40, function() Soul.Options.Close() end, "accent")
+local closeButton = UI.Button(footer, "Close", 132, 34, function() Soul.Options.Close() end, "accent")
 closeButton:SetPoint("RIGHT", -GUTTER + 8, 0)
-local reloadButton = UI.Button(footer, "Reload UI", 160, 40, function() ReloadUI() end, "well")
+local reloadButton = UI.Button(footer, "Reload UI", 132, 34, function() ReloadUI() end, "well")
 reloadButton:SetPoint("LEFT", GUTTER - 8, 0)
-local resetButton = UI.Button(footer, "Reset page", 190, 40, function() end, "well")
+local resetButton = UI.Button(footer, "Reset page", 180, 34, function() end, "ghost")
 resetButton:SetPoint("LEFT", reloadButton, "RIGHT", 10, 0)
 
 -- Window scale sits in the footer so the page title has the header to itself.
@@ -430,18 +477,60 @@ local function Build(info, tab)
 	return built[id]
 end
 
+-- One selection indicator (accent bar + fading wash) that slides between rows.
+local indicator = CreateFrame("Frame", nil, nav)
+indicator:SetHeight(40)
+indicator:SetPoint("TOPLEFT", 0, 0)
+indicator:SetPoint("RIGHT", nav, "RIGHT", 0, 0)
+indicator:EnableMouse(false)
+indicator:Hide()
+local indicatorBar = indicator:CreateTexture(nil, "ARTWORK")
+indicatorBar:SetPoint("TOPLEFT")
+indicatorBar:SetPoint("BOTTOMLEFT")
+indicatorBar:SetWidth(3)
+local indicatorWash = indicator:CreateTexture(nil, "BACKGROUND")
+indicatorWash:SetAllPoints()
+indicatorWash:SetTexture(WHITE)
+UI.OnAccent(function(r, g, b)
+	indicatorBar:SetColorTexture(r, g, b, 1)
+	if indicatorWash.SetGradient and CreateColor then
+		indicatorWash:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0.2), CreateColor(r, g, b, 0))
+	else
+		indicatorWash:SetVertexColor(r, g, b, 0.1)
+	end
+end)
+local indicatorY
+
+local function MoveIndicator(row)
+	if not row or not row._y then
+		indicator:Hide()
+		return
+	end
+	local to = row._y
+	if not indicator:IsShown() or not indicatorY then
+		indicatorY = to
+		indicator:SetPoint("TOPLEFT", 0, to)
+		indicator:Show()
+		return
+	end
+	local from = indicatorY
+	indicatorY = to
+	UI.Animate("nav-indicator", 0.22, function(p)
+		indicator:SetPoint("TOPLEFT", 0, UI.Lerp(from, to, p))
+	end)
+end
+
 local function PaintNav()
 	local r, g, b = Soul:Accent()
+	MoveIndicator(navRows[activePage])
 	for key, row in pairs(navRows) do
 		if row.info then
 			local on = key == activePage
-			row.bar:SetShown(on)
-			row.bar:SetColorTexture(r, g, b, 1)
-			row.wash:SetShown(on)
-			if row.wash.SetGradient and CreateColor then
-				row.wash:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0.22), CreateColor(r, g, b, 0))
-			else
-				row.wash:SetVertexColor(r, g, b, 0.12)
+			row.bar:Hide()
+			row.wash:Hide()
+			if row.icon then
+				local ic = on and UI.C.text or UI.C.dim
+				if on then row.icon:SetColor(r, g, b, 1) else row.icon:SetColor(ic[1], ic[2], ic[3], 0.8) end
 			end
 			local off = row.power and AddonOn(row.info.addon) == false
 			local c = on and UI.C.text or UI.C.dim
@@ -459,9 +548,35 @@ local function PaintNav()
 	profileName:SetText(Soul.db and Soul.db.activeProfile or "?")
 end
 
+local function SlideTabLine(button)
+	local x = button._x or GUTTER
+	local w = button:GetWidth()
+	if not tabLine:IsShown() then
+		tabLineX, tabLineW = x, w
+		tabLine:SetPoint("BOTTOMLEFT", x, 0)
+		tabLine:SetWidth(w)
+		tabLine:Show()
+		return
+	end
+	local fx, fw = tabLineX, tabLineW
+	tabLineX, tabLineW = x, w
+	UI.Animate("tab-line", 0.2, function(p)
+		tabLine:SetPoint("BOTTOMLEFT", UI.Lerp(fx, x, p), 0)
+		tabLine:SetWidth(math.max(1, UI.Lerp(fw, w, p)))
+	end)
+end
+
 local function PaintTabs(info)
 	for i = 1, #tabButtons do tabButtons[i]:Hide() end
-	if not info.tabs or #info.tabs < 2 then return end
+	if not info.tabs or #info.tabs < 2 then
+		-- No tabs: collapse the band so the page starts under the header.
+		tabBar:SetHeight(1)
+		tabLine:Hide()
+		tabRule:Hide()
+		return
+	end
+	tabBar:SetHeight(TABS)
+	tabRule:Show()
 	local x = GUTTER
 	local r, g, b = Soul:Accent()
 	for i = 1, #info.tabs do
@@ -489,10 +604,11 @@ local function PaintTabs(info)
 		button:SetWidth(width)
 		button:ClearAllPoints()
 		button:SetPoint("BOTTOMLEFT", x, 0)
+		button._x = x
 		x = x + width + 30
 		button.on = tab.key == activeTab
-		button.line:SetColorTexture(r, g, b, 1)
-		button.line:SetShown(button.on)
+		button.line:Hide()
+		if button.on then SlideTabLine(button) end
 		if button.on then
 			button.text:SetTextColor(UI.C.text[1], UI.C.text[2], UI.C.text[3])
 		else
@@ -540,7 +656,13 @@ function Soul.Options.Show(pageKey, tabKey)
 	scroll:SetScrollChild(current.frame)
 	current.frame:Show()
 	if not panel._soulOpening then
-		UI.FadeIn(current.frame, 0.12)
+		-- New page content rises 12px into place while fading in.
+		local frame = current.frame
+		frame:SetAlpha(0)
+		UI.Animate("page", 0.24, function(p)
+			frame:SetAlpha(p)
+			scroll:SetPoint("TOPLEFT", previewHolder, "BOTTOMLEFT", 0, -12 * (1 - p))
+		end)
 	end
 	W.Refresh(current.col)
 	ScrollTo(0, true)
@@ -559,6 +681,16 @@ function Soul.Options.Show(pageKey, tabKey)
 end
 
 local NAV_ROW = 40
+local NAV_ICONS = {
+	general = "sliders",
+	profiles = "user",
+	unitframes = "frame",
+	nameplates = "plate",
+	groupframes = "group",
+	actionbars = "grid",
+	resources = "pips",
+	meters = "bars",
+}
 
 local function NavRow(info, y)
 	local row = CreateFrame("Button", nil, nav)
@@ -578,8 +710,14 @@ local function NavRow(info, y)
 	row.bar:SetPoint("TOPLEFT")
 	row.bar:SetPoint("BOTTOMLEFT")
 	row.bar:SetWidth(3)
+	row._y = y
+	local glyph = NAV_ICONS[info.key]
+	if glyph then
+		row.icon = UI.Glyph(row, glyph, 16, UI.C.dim, 1.4)
+		row.icon:SetPoint("LEFT", 26, 0)
+	end
 	row.text = UI.Text(row, 14, UI.C.dim)
-	row.text:SetPoint("LEFT", 28, 0)
+	row.text:SetPoint("LEFT", glyph and 54 or 28, 0)
 	row.text:SetPoint("RIGHT", -36, 0)
 	row.text:SetText(info.title)
 	if info.addon then
@@ -590,8 +728,17 @@ local function NavRow(info, y)
 			return info.description
 		end)
 	end
-	row:HookScript("OnEnter", function(self) self.hover:Show() end)
-	row:HookScript("OnLeave", function(self) self.hover:Hide() end)
+	local hoverKey = "nav-hover:" .. info.key
+	row.hover:SetAlpha(0)
+	row.hover:Show()
+	row:HookScript("OnEnter", function(self)
+		local from = self.hover:GetAlpha()
+		UI.Animate(hoverKey, 0.12, function(p) self.hover:SetAlpha(UI.Lerp(from, 1, p)) end)
+	end)
+	row:HookScript("OnLeave", function(self)
+		local from = self.hover:GetAlpha()
+		UI.Animate(hoverKey, 0.18, function(p) self.hover:SetAlpha(UI.Lerp(from, 0, p)) end)
+	end)
 	row:SetScript("OnClick", function() Soul.Options.Show(info.key) end)
 	navRows[info.key] = row
 	return row
@@ -607,11 +754,11 @@ local function ActionRow(y)
 	hover:SetAllPoints()
 	hover:SetColorTexture(1, 1, 1, 0.04)
 	hover:Hide()
-	local icon = Disc(row, 15, "ARTWORK")
+	local icon = UI.Glyph(row, "move", 16, UI.C.dim, 1.4)
 	icon:SetPoint("LEFT", 26, 0)
-	icon:SetVertexColor(UI.C.dim[1], UI.C.dim[2], UI.C.dim[3], 0.85)
+	UI.OnAccent(function(r, g, b) icon:SetColor(r, g, b, 1) end)
 	local text = UI.Text(row, 14, UI.C.dim)
-	text:SetPoint("LEFT", icon, "RIGHT", 10, 0)
+	text:SetPoint("LEFT", 54, 0)
 	text:SetText("Edit Mode")
 	row:SetScript("OnEnter", function()
 		hover:Show()
@@ -793,7 +940,16 @@ function Soul.Options.Open(_, pageKey)
 	panel:Show()
 	Soul.Options.Show(pageKey or activePage or (Soul.optionPages[1] and Soul.optionPages[1].key))
 	panel._soulOpening = nil
-	UI.FadeIn(panel, 0.18)
+	-- Open: fade in while growing from 97% about the window's anchor. This
+	-- replaces any close tween still running, so clear its closing flag.
+	panel._soulClosing = nil
+	local base = UI.PanelScale()
+	panel:SetAlpha(0)
+	UI.Animate("window", 0.22, function(p)
+		panel:SetAlpha(p)
+		panel:SetScale(base * (0.97 + 0.03 * p))
+	end)
+	breathe:Play()
 end
 
 function Soul.Options.Close()
@@ -802,9 +958,17 @@ function Soul.Options.Close()
 	search:ClearFocus()
 	pageSearch:ClearFocus()
 	panel._soulClosing = true
-	UI.FadeOut(panel, 0.12, function()
+	local base = UI.PanelScale()
+	local from = panel:GetAlpha() or 1
+	UI.Animate("window", 0.14, function(p)
+		panel:SetAlpha(from * (1 - p))
+		panel:SetScale(base * (1 - 0.02 * p))
+	end, function()
 		panel._soulClosing = nil
 		panel:Hide()
+		panel:SetAlpha(1)
+		panel:SetScale(base)
+		breathe:Stop()
 	end)
 end
 

@@ -840,6 +840,9 @@ function NP:OnEnable()
 	sampleName:SetPoint("LEFT", 4, 0)
 	sampleName:SetJustifyH("LEFT")
 	sampleName:SetTextColor(0.95, 0.95, 0.95)
+	-- A FontString has no font until one is set, and SetText then throws
+	-- ("Font not set"), which aborted the rest of OnEnable in 0.7.13.
+	Soul:ApplyFont(sampleName, 11, "OUTLINE")
 	sampleName:SetText("Nameplate")
 	local sampleCast = Soul.CastBar.New(sample, { enemy = true, name = "SoulUINameplateSampleCast" })
 	sampleCast.allowed = function() return false end

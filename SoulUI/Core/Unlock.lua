@@ -419,29 +419,59 @@ end
 -- Mover chrome
 ------------------------------------------------------------------------------
 
+-- Mover chrome (0.8.0). Idle: faint outline and a small name tag on a dark
+-- backing, centered, only when it fits inside the box. Hover: a tag above the
+-- box with the name and size, so it never covers the element. Selected: solid
+-- accent outline, accent tag, four corner handles.
 local function PaintMover(mover)
 	local r, g, b = Soul:Accent()
 	local on = mover == selected
 	local hover = mover._hover
+	local chip = mover.chip
+	local name = mover._name or ""
 	if mover._ghost then
-		mover.fill:SetColorTexture(0.1, 0.1, 0.11, on and 0.6 or (hover and 0.5 or 0.35))
+		mover.fill:SetColorTexture(0.1, 0.1, 0.11, on and 0.5 or (hover and 0.4 or 0.25))
 		mover.outline:SetColor(0.55, 0.55, 0.6, on and 0.9 or (hover and 0.6 or 0.3))
-		mover.label:SetTextColor(on and r or 0.6, on and g or 0.6, on and b or 0.62)
-		mover.size:Hide()
+	else
+		mover.fill:SetColorTexture(r, g, b, on and 0.16 or (hover and 0.12 or 0.05))
+		mover.outline:SetColor(r, g, b, on and 1 or (hover and 0.85 or 0.4))
+	end
+	for i = 1, #mover.handles do
+		mover.handles[i]:SetShown(on)
+		mover.handles[i]:SetColorTexture(r, g, b, 1)
+	end
+	if on or hover then
+		local text = name
+		local frame = FrameOf(mover.element)
+		if frame and not mover._ghost then
+			local _, _, w, h = RectOf(frame)
+			if w then text = string.format("%s   %d x %d", name, math.floor(w + 0.5), math.floor(h + 0.5)) end
+		end
+		chip.text:SetText(text)
+		chip:SetWidth(math.floor((chip.text:GetStringWidth() or 40) + 18))
+		if on then
+			chip.bg:SetColorTexture(r, g, b, 1)
+			chip.edge:SetColor(r, g, b, 1)
+			chip.text:SetTextColor(0.03, 0.03, 0.04)
+		else
+			chip.bg:SetColorTexture(0.03, 0.035, 0.045, 0.96)
+			chip.edge:SetColor(r, g, b, 0.6)
+			chip.text:SetTextColor(1, 1, 1)
+		end
+		chip:Show()
+		mover.label:Hide()
+		mover.labelBg:Hide()
 		return
 	end
-	mover.fill:SetColorTexture(r * 0.25, g * 0.25, b * 0.25, on and 0.55 or (hover and 0.45 or 0.32))
-	mover.outline:SetColor(r, g, b, on and 1 or (hover and 0.8 or 0.45))
-	mover.label:SetTextColor(on and r or 1, on and g or 1, on and b or 1)
-	local frame = FrameOf(mover.element)
-	if frame and (on or hover) then
-		local _, _, w, h = RectOf(frame)
-		if w then
-			mover.size:SetFormattedText("%d x %d", math.floor(w + 0.5), math.floor(h + 0.5))
-			mover.size:Show()
-		end
+	chip:Hide()
+	local lw = mover.label:GetStringWidth() or 0
+	local fits = lw + 16 <= (mover:GetWidth() or 0) and (mover:GetHeight() or 0) >= 18
+	mover.label:SetShown(fits)
+	mover.labelBg:SetShown(fits)
+	if mover._ghost then
+		mover.label:SetTextColor(0.62, 0.62, 0.66)
 	else
-		mover.size:Hide()
+		mover.label:SetTextColor(0.95, 0.95, 0.97)
 	end
 end
 
@@ -584,11 +614,34 @@ function Soul:ShowMover(key)
 		mover.fill = mover:CreateTexture(nil, "BACKGROUND")
 		mover.fill:SetAllPoints()
 		mover.outline = UI.Edge(mover, 0, 0.93, 1, 0.45, "OVERLAY")
-		mover.label = UI.Text(mover, 12, UI.C.text, "CENTER")
+		mover.label = UI.Text(mover, 11, UI.C.text, "CENTER")
 		mover.label:SetPoint("CENTER", 0, 0)
+		mover.labelBg = mover:CreateTexture(nil, "ARTWORK")
+		mover.labelBg:SetColorTexture(0.02, 0.025, 0.03, 0.78)
+		mover.labelBg:SetPoint("TOPLEFT", mover.label, "TOPLEFT", -6, 3)
+		mover.labelBg:SetPoint("BOTTOMRIGHT", mover.label, "BOTTOMRIGHT", 6, -3)
+		-- Kept for callers that still read it; the chip shows the size now.
 		mover.size = UI.Text(mover, 10, UI.C.dim, "CENTER")
-		mover.size:SetPoint("TOP", mover.label, "BOTTOM", 0, -1)
 		mover.size:Hide()
+		local chip = CreateFrame("Frame", nil, mover)
+		chip:SetHeight(20)
+		chip:SetPoint("BOTTOMLEFT", mover, "TOPLEFT", 0, 3)
+		chip:SetFrameLevel(mover:GetFrameLevel() + 5)
+		chip:EnableMouse(false)
+		chip.bg = UI.Fill(chip, { 0.03, 0.035, 0.045, 0.96 })
+		chip.edge = UI.Edge(chip, 1, 1, 1, 0.15)
+		chip.text = UI.Text(chip, 12, UI.C.text)
+		chip.text:SetPoint("LEFT", 9, 0)
+		chip:Hide()
+		mover.chip = chip
+		mover.handles = {}
+		for _, corner in ipairs({ "TOPLEFT", "TOPRIGHT", "BOTTOMLEFT", "BOTTOMRIGHT" }) do
+			local handle = mover:CreateTexture(nil, "OVERLAY", nil, 7)
+			handle:SetSize(6, 6)
+			handle:SetPoint("CENTER", mover, corner, 0, 0)
+			handle:Hide()
+			mover.handles[#mover.handles + 1] = handle
+		end
 		mover:SetScript("OnEnter", function(self) self._hover = true PaintMover(self) end)
 		mover:SetScript("OnLeave", function(self) self._hover = false PaintMover(self) end)
 		mover:SetScript("OnMouseDown", function(self, button)
@@ -620,7 +673,8 @@ function Soul:ShowMover(key)
 	end
 	mover.element = element
 	mover._ghost = ghost
-	mover.label:SetText(ghost and ((element.label or key) .. "  (hidden)") or (element.label or key))
+	mover._name = ghost and ((element.label or key) .. " (hidden)") or (element.label or key)
+	mover.label:SetText(mover._name)
 	FitMover(mover, frame)
 	mover:Show()
 	PaintMover(mover)
@@ -710,8 +764,18 @@ local function EnsureToolbar()
 	UI.Tip(ghostSwitch, "Hidden elements", "Show dim boxes for elements you have hidden, so you can select them and turn them back on.")
 
 	local save = UI.Button(row, "Save & Exit", 110, 30, function() Soul:CommitUnlock() end, "accent")
+	save:RegisterForClicks("AnyUp")
 	save:SetPoint("RIGHT", -14, 0)
-	local cancel = UI.Button(row, "Cancel", 80, 30, function() Soul:CloseUnlock(true) end)
+	local cancel = UI.Button(row, "Cancel", 80, 30, function()
+		Soul:CloseUnlock(true)
+		-- Belt and braces: the owner saw Cancel leave the session open once.
+		-- Whatever happened, the click must end edit mode.
+		if Soul.unlocking then
+			Soul.unlocking = false
+			Soul:HideMovers()
+		end
+	end)
+	cancel:RegisterForClicks("AnyUp")
 	cancel:SetPoint("RIGHT", save, "LEFT", -8, 0)
 	local reset = UI.Button(row, "Reset Layout", 110, 30, function()
 		Soul:ResetLayout()
@@ -1000,7 +1064,10 @@ local function EnsureKeys()
 	keys:SetScript("OnKeyDown", function(self, key)
 		local step = (IsShiftKeyDown() and 10 or 1) * (Soul.Pixel.mult or 1)
 		local consumed = true
-		if not selected or InCombatLockdown() then
+		if key == "ESCAPE" and not selected and not InCombatLockdown() then
+			-- Escape with nothing selected leaves edit mode (same as Cancel).
+			Soul:CloseUnlock(true)
+		elseif not selected or InCombatLockdown() then
 			consumed = false
 		elseif key == "LEFT" then Nudge(-step, 0)
 		elseif key == "RIGHT" then Nudge(step, 0)

@@ -80,7 +80,7 @@ local function BuildLook(col)
 	W.Section(col, "Settings window")
 	W.Row(col, {
 		type = "dropdown", label = "Window font", width = 220,
-		tooltip = "Font for this window and edit mode. Frames keep the font above. Window scale is the slider at the top right of this window.",
+		tooltip = "Font for this window and edit mode. Frames keep the font above. Window scale is the slider in the footer of this window.",
 		items = function()
 			local items = { { value = "", label = "SoulUI default (Barlow)" } }
 			local media = UI.MediaItems("font")
@@ -98,6 +98,12 @@ local function BuildLook(col)
 				Soul.Options.Refresh()
 			end)
 		end,
+	})
+	W.Row(col, {
+		type = "toggle", label = "Animations",
+		tooltip = "Window open and close, the sliding selection in the sidebar and tabs, page changes and hover fades. Off makes every change instant.",
+		get = function() return Soul.db.account.motion ~= false end,
+		set = function(v) Soul.db.account.motion = v and true or false end,
 	})
 end
 
