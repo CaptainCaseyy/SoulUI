@@ -29,10 +29,16 @@ end
 local function Merge(dst, src)
 	for k, v in pairs(src) do
 		if type(v) == "table" then
-			if type(dst[k]) ~= "table" then
-				dst[k] = {}
+			-- An explicit false means "deliberately unset" (for example a unit
+			-- with no custom color): leave it, do not fill in the default table.
+			if dst[k] == false then
+				-- keep
+			else
+				if type(dst[k]) ~= "table" then
+					dst[k] = {}
+				end
+				Merge(dst[k], v)
 			end
-			Merge(dst[k], v)
 		elseif dst[k] == nil then
 			dst[k] = v
 		end
@@ -120,6 +126,61 @@ function Soul:InitDB()
 				if first.pixelWidth == nil then first.pixelWidth = false end
 				if first.pixelHeight == nil then first.pixelHeight = false end
 				if first.rows == nil then first.rows = false end
+			end
+		end
+	end
+
+	-- 0.9.15, the owner's call: profiles older than the 0.9.14 defaults keep
+	-- their old look. A value equal to an old default was stripped at logout,
+	-- so it reads as nil now and would pick up the new default. Pin the old
+	-- value only where the profile has nothing of its own (nil). Profiles
+	-- made on or after 0.9.14 (layout version 4) keep the new defaults.
+	if not db._migrations["look-0.9.15"] then
+		db._migrations["look-0.9.15"] = true
+		local function Pin(tbl, key, value)
+			if type(tbl) == "table" and tbl[key] == nil then tbl[key] = value end
+		end
+		local function Section(parent, key)
+			if type(parent[key]) ~= "table" then parent[key] = {} end
+			return parent[key]
+		end
+		for _, profile in pairs(db.profiles) do
+			if type(profile) == "table" and type(profile._layoutVersion) == "number"
+				and profile._layoutVersion < 4 then
+				profile.modules = type(profile.modules) == "table" and profile.modules or {}
+				local modules = profile.modules
+				-- Action bars: empty slots showed; the main bar had no macro text.
+				local bars = Section(modules, "ActionBars")
+				Pin(bars, "showEmpty", true)
+				Pin(Section(Section(bars, "bars"), "main"), "showMacro", false)
+				-- Meters: "138M (412K)", no rank, darker window.
+				local meters = Section(modules, "DamageMeters")
+				Pin(meters, "valueFormat", "both")
+				Pin(meters, "showRank", false)
+				Pin(meters, "bgAlpha", 0.75)
+				-- Nameplates: the thinner cast bar.
+				Pin(Section(modules, "Nameplates"), "castHeight", 12)
+				-- Resources: class-colored shards with a 2px gap, old bar sizes.
+				local res = Section(modules, "ResourceBars")
+				local pips = Section(res, "pips")
+				Pin(pips, "colorMode", "class")
+				Pin(pips, "gap", 2)
+				Pin(pips, "height", 32)
+				Pin(pips, "width", 276)
+				local cast = Section(res, "cast")
+				Pin(cast, "height", 22)
+				Pin(cast, "width", 276)
+				-- Unit frames: the pale solid shield; target in its own color.
+				local uf = Section(modules, "UnitFrames")
+				Pin(uf, "shieldPlacement", "wash")
+				Pin(uf, "shieldPattern", "solid")
+				Pin(uf, "shieldColor", { 0.6, 0.85, 1 })
+				Pin(uf, "shieldAlpha", 0.5)
+				Pin(uf, "overflowAlpha", 0.22)
+				local units = Section(uf, "units")
+				-- false = "no custom color" to ColorHealth, and survives the merge.
+				Pin(Section(units, "target"), "color", false)
+				Pin(Section(units, "player"), "nameSize", 0)
 			end
 		end
 	end

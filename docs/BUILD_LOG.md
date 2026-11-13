@@ -2,6 +2,32 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-13 — laptop — 0.9.16 older profiles keep their old look
+
+The owner's call: profiles from before the 0.9.14 defaults keep the look they had.
+
+**Why.** A value equal to the old default was stripped at logout, so it is nil in the saved profile and would silently pick up Cursor's new default.
+
+**Migration `look-0.9.15` (`Database.lua InitDB`).** It applies only to profiles with layout version 1–3, and pins the old value only where the profile has nothing of its own:
+- **Action bars:** empty slots shown; no macro text on the main bar.
+- **Meters:** value format "both", no rank, background 0.75.
+- **Nameplates:** cast height 12.
+- **Resources:** class-colored shards; gap 2, height 32, width 276; cast bar 22 x 276.
+- **Unit frames:**
+  - The pale solid shield (light blue, 0.5 alpha, overflow 0.22).
+  - The target frame has no custom color.
+  - The player name size is automatic.
+
+The accent color and meter 1's size were already pinned by `accent-0.9.14`.
+
+**Merge change.** `Merge` now leaves an explicit `false` in place when the default is a table. Before, `false` ("deliberately no custom color") was replaced by the default table, which would have painted the target frame white.
+
+**Unaffected.** The owner's laptop profile is version 4: it is the source of the new defaults.
+
+**Checked in game.** `/reload` loads cleanly and the laptop profile looks the same.
+
+**Not checked.** An actual pre-0.9.14 profile, such as the home PC or a guild member, keeping its look.
+
 ## 2026-11-13 — laptop — 0.9.15 review of the Cursor build, checked in game
 
 Cursor shipped 0.9.1–0.9.14 in one commit (b30e7ee): new Bags and QoL modules, plus changes to core and every module. That commit was never reviewed. Three Claude reviewers each read one area line by line and fixed what they found. The lead checked the live game before and after.
