@@ -477,13 +477,12 @@ local function CreateUnitFrame(unit, parent)
 	health._overClip = overClip
 	local over = CreateFrame("StatusBar", nil, overClip)
 	over:SetStatusBarTexture(WHITE)
-	-- Shield that does not fit past the fill: a slim bright strip along the
-	-- bottom edge, growing in from the right. A full-height wash read as a
-	-- rendering glitch on a full bar (seen in game, 0.8.1).
-	over:SetStatusBarColor(0.72, 0.9, 1, 0.85)
+	-- Shield that does not fit past the fill: a pale full-height wash growing
+	-- in from the right end. The owner prefers this to the 0.8.1 bottom strip.
+	over:SetStatusBarColor(0.75, 0.9, 1, 0.22)
 	over:SetReverseFill(true)
+	over:SetPoint("TOPRIGHT", health, "TOPRIGHT")
 	over:SetPoint("BOTTOMRIGHT", health, "BOTTOMRIGHT")
-	over:SetHeight(3)
 	over:SetWidth(340)
 	over:SetMinMaxValues(0, 1)
 	over:SetValue(0)

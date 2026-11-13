@@ -2,6 +2,16 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-13 — laptop — 0.8.2 pale shield back, meter rank after restart
+
+- **Shield overflow (`UnitFrames.lua`).** The owner preferred the pale full-height wash from the right end, so the 0.8.1 bottom strip is reverted. Do not change it again without asking.
+- **Meter rank number missing after a client restart (`DamageMeters.lua`).** It was visible after a `/reload`, but blank after a full restart, even with "Rank numbers" on.
+  - The rank had a fixed-width column measured from the font, and that measurement could come out too narrow and hide the number. The rank now sizes to its own text.
+  - The measurement helper restores the text it borrows from the top row, and falls back to a size estimate when the font reports 0.
+  - Every row font string gets a font at creation, because a paint can run before Apply.
+
+Checked in game after the owner's restart: the bundled "SoulUI Smooth" texture draws on the health bar, shards and meters; the pale shield band is back; the meter shows "1 Capcasey" again.
+
 ## 2026-11-13 — laptop — 0.8.1 frames, from the live game
 
 These were checked up close in the running game, after `/reload`.

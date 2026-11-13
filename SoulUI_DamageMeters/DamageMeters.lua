@@ -902,10 +902,18 @@ local function Geometry(db)
 	return rowHeight, gap, rows, headerH
 end
 
-local function MeasureWidth(fs, text)
+-- Right after a game restart the font file can still be loading, and the
+-- measured width comes back 0. That made the rank column 1px wide and hid
+-- the rank number (seen in game, 0.8.2). Fall back to a size estimate.
+-- The probe is a live row's font string: put its text back afterwards, or an
+-- idle meter (no repaint) keeps a blank rank on the top row.
+local function MeasureWidth(fs, text, size)
+	local old = fs:GetText()
 	fs:SetText(text)
 	local w = fs:GetStringWidth() or 0
-	fs:SetText("")
+	fs:SetText(old or "")
+	local estimate = #text * (size or 12) * 0.62
+	if w < estimate * 0.5 then w = estimate end
 	return math_ceil(w) + 1
 end
 
@@ -938,8 +946,11 @@ local function StyleRow(window, row, n, rowHeight, stride, fontSize, db)
 	TextStyle(row.Value2, fontSize, db)
 	TextStyle(row.Rank, fontSize, db)
 	row.Rank:ClearAllPoints()
-	row.Rank:SetPoint("LEFT", row.Bar, "LEFT", 4, 0)
-	row.Rank:SetWidth(window._rankWidth or 14)
+	row.Rank:SetPoint("LEFT", row.Bar, "LEFT", 6, 0)
+	-- Sized by its own text. A measured fixed-width column came out too narrow
+	-- after a client restart and hid the number (seen in game, 0.8.2).
+	row.Rank:SetWidth(0)
+	row.Rank:SetWordWrap(false)
 	row.Value:ClearAllPoints()
 	row.Value:SetPoint("RIGHT", row.Bar, "RIGHT", -6, 0)
 	row.Value2:ClearAllPoints()
@@ -1063,9 +1074,9 @@ function DM:Apply()
 		local probe = window.rows[1]
 		TextStyle(probe.Rank, fontSize, db)
 		TextStyle(probe.Value, fontSize, db)
-		window._rankWidth = MeasureWidth(probe.Rank, "20")
+		window._rankWidth = MeasureWidth(probe.Rank, "20", fontSize)
 		local format = db.valueFormat or "both"
-		window._columnWidth = MeasureWidth(probe.Value, format == "percent" and "100%" or "(888.8K)")
+		window._columnWidth = MeasureWidth(probe.Value, format == "percent" and "100%" or "(888.8K)", fontSize)
 		window._mode = nil
 		for n = 1, POOL do
 			local row = window.rows[n]
@@ -1125,21 +1136,27 @@ local function MakeRow(parent)
 	text:SetAllPoints(bar)
 	text:SetFrameLevel(bar:GetFrameLevel() + 2)
 	local rank = text:CreateFontString(nil, "OVERLAY")
+	-- Every row text gets a font at creation: a paint can run before Apply
+	-- styles the rows, and SetText on a font string with no font throws.
+	Soul:ApplyFont(rank, 12, "NONE")
 	rank:SetJustifyH("RIGHT")
 	rank:SetTextColor(1, 1, 1, 0.9)
 	rank:Hide()
 	row.Rank = rank
 	local name = text:CreateFontString(nil, "OVERLAY")
+	Soul:ApplyFont(name, 12, "NONE")
 	name:SetJustifyH("LEFT")
 	name:SetWordWrap(false)
 	name:SetTextColor(1, 1, 1)
 	row.Name = name
 	local value = text:CreateFontString(nil, "OVERLAY")
+	Soul:ApplyFont(value, 12, "NONE")
 	value:SetJustifyH("RIGHT")
 	value:SetWordWrap(false)
 	value:SetTextColor(1, 1, 1)
 	row.Value = value
 	local value2 = text:CreateFontString(nil, "OVERLAY")
+	Soul:ApplyFont(value2, 12, "NONE")
 	value2:SetJustifyH("RIGHT")
 	value2:SetWordWrap(false)
 	value2:SetTextColor(1, 1, 1)
