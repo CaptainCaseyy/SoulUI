@@ -885,6 +885,10 @@ local function Chrome(btn, size)
 	FitAlert(btn)
 	if btn._soulGlow then btn._soulGlow:Hide() end
 	if btn.TargetReticleAnimFrame then btn.TargetReticleAnimFrame:SetScale(scale) end
+	-- The gold cast fill and the interrupt flash are laid out for 45px too;
+	-- unscaled they drew a small box inside larger buttons.
+	if btn.SpellCastAnimFrame then btn.SpellCastAnimFrame:SetScale(scale) end
+	if btn.InterruptDisplay then btn.InterruptDisplay:SetScale(scale) end
 	if btn.AssistedCombatRotationFrame then btn.AssistedCombatRotationFrame:SetScale(scale) end
 	Soul:ShowBorder(btn, DB().showBorder and true or false, 1)
 	RefreshText(btn)

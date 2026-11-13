@@ -2,6 +2,10 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-13 — laptop — 0.9.20 cast animation fits the button
+
+**Cast animation (`ActionBars.lua`).** The gold cast fill (`SpellCastAnimFrame`) and the interrupt flash (`InterruptDisplay`) were not scaled to our button size, so they drew a small box inside larger buttons. They now get the same `size / 45` scale as the other overlays. Not checked in game.
+
 ## 2026-11-13 — laptop — 0.9.19 vendor checked; empty bag filters say so
 
 **Auto repair works (checked at a repair vendor).** It paid from guild funds first: "Repaired for 15g 49s (guild)".
