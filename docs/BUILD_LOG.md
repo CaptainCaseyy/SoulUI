@@ -2,6 +2,14 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-13 — laptop — 0.9.19 vendor checked; empty bag filters say so
+
+**Auto repair works (checked at a repair vendor).** It paid from guild funds first: "Repaired for 15g 49s (guild)".
+
+**Sell junk.** The character had no gray items, so nothing was sold, and the feature correctly printed nothing. Selling an actual gray item is still unchecked.
+
+**Empty bag filter (`Bags.lua` `Layout`).** A sidebar category with no items, such as Junk, showed only the "Free" block, which looked like a glitch. It now also shows a dim "Nothing in <category>." line under the free slot. The line hides again on All or on any category that has items. Checked in game.
+
 ## 2026-11-13 — laptop — 0.9.18 bank checked at a banker
 
 **Bank tab buttons (`Bank.lua`).** A tab with no chosen icon carries the game's question mark (134400), so three unset tabs showed as red and grey question marks. That looked like an error. Such a tab now shows its number, white when selected and dim otherwise.

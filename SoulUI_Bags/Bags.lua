@@ -1357,6 +1357,7 @@ local function Layout()
 	local freeN, freeR = 0, 0
 	local firstN, firstR
 	local junk = 0
+	local matched = 0
 	for i = 1, #view.bags do
 		local bag = view.bags[i]
 		local list = view.recs[bag]
@@ -1371,6 +1372,7 @@ local function Layout()
 				local pinned = type(pins) == "table" and type(rec.itemID) == "number" and not issecret(rec.itemID) and pins[rec.itemID]
 				if pinned then cat = "pin" end
 				if not filter or cat == filter then
+					matched = matched + 1
 					if byBag then
 						BG.Add(view, "bag" .. bag, rec)
 					elseif grouped or pinned then
@@ -1430,6 +1432,23 @@ local function Layout()
 	scroll:SetPoint("TOPLEFT", win.body, "TOPLEFT", pad + side, -top)
 	scroll:SetSize(max(1, width), viewH)
 	view.content:SetSize(max(1, width), height)
+	-- A sidebar filter that matches nothing says so under the free slot,
+	-- instead of leaving a lone "Free" block that looks like a glitch.
+	if filter and matched == 0 then
+		if not win.emptyNote then
+			win.emptyNote = UI.Text(win.body, 13, UI.C.dim)
+		end
+		local label = "these"
+		for c = 1, #BG.CATEGORIES do
+			if BG.CATEGORIES[c].key == filter then label = BG.CATEGORIES[c].label end
+		end
+		win.emptyNote:ClearAllPoints()
+		win.emptyNote:SetPoint("TOPLEFT", scroll, "TOPLEFT", 0, -(height + 14))
+		win.emptyNote:SetText("Nothing in " .. label .. ".")
+		win.emptyNote:Show()
+	elseif win.emptyNote then
+		win.emptyNote:Hide()
+	end
 	win:SetSize(w, top + viewH + pad + FOOTER)
 	win:SetScrollOffset(scroll:GetVerticalScroll() or 0)
 	UpdateFooter()
