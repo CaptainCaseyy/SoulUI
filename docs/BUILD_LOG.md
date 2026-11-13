@@ -2,6 +2,25 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-13 — laptop — 0.9.17 keystone and buff check windows, visible chat copy button
+
+**Keystone popup (`/soulkeys`) and ready-check buff list (`Raid.lua`).** Both were plain dark boxes with a letter "x". They now use the shared `UI.Window`:
+- A title band you drag to move; the position is saved per window.
+- The drawn close button, and Escape closes them (`UISpecialFrames`).
+- The panel scale is applied.
+- "Say in party" is an outline accent button.
+
+**Chat copy button (`Chat.lua`).** Its idle opacity went from 0.35 to 0.7: on a faded chat window it was nearly invisible.
+
+**Checked in game.**
+- `/way 50 50` sets the pin.
+- `/soulkeys` shows the new window, and Escape closes it.
+- The copy button is visible and opens the copy box.
+
+**Not checked.**
+- The bank and warband bank, and vendor repair and sell junk (these need the character at an NPC).
+- The buff check window: it needs a ready check.
+
 ## 2026-11-13 — laptop — 0.9.16 older profiles keep their old look
 
 The owner's call: profiles from before the 0.9.14 defaults keep the look they had.

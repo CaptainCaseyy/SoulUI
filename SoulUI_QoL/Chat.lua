@@ -192,9 +192,9 @@ local function BuildCopyButtons()
 			local button = UI.IconButton(chat, "bars", 20, function() CopyChat(chat) end)
 			button:SetPoint("TOPRIGHT", chat, "TOPRIGHT", 2, 2)
 			button:SetFrameLevel(chat:GetFrameLevel() + 6)
-			button:SetAlpha(0.35)
+			button:SetAlpha(0.7)
 			button:HookScript("OnEnter", function(self) self:SetAlpha(1) end)
-			button:HookScript("OnLeave", function(self) self:SetAlpha(0.35) end)
+			button:HookScript("OnLeave", function(self) self:SetAlpha(0.7) end)
 			copyButtons[chat] = button
 		end
 	end
