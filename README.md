@@ -17,10 +17,12 @@ The repo is https://github.com/CaptainCaseyy/SoulUI
 
    - `SoulUI`
    - `SoulUI_ActionBars`
+   - `SoulUI_Bags`
    - `SoulUI_DamageMeters`
    - `SoulUI_GroupFrames`
    - `SoulUI_Nameplates`
    - `SoulUI_Options`
+   - `SoulUI_QoL`
    - `SoulUI_ResourceBars`
    - `SoulUI_UnitFrames`
 

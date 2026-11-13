@@ -17,7 +17,7 @@ SoulUI.Defaults.Nameplates = {
 	targetStyle = "both", -- border | arrows | both | glow | none
 	nonTargetAlpha = 0.85, -- other enemy plates while you target one (1 = no dimming)
 	showCast = true,
-	castHeight = 12,
+	castHeight = 24,
 	castIcon = true,
 	castClick = true, -- the cast bar is part of the click area (targets that enemy)
 	castFont = 0,         -- 0 = sized from the cast height

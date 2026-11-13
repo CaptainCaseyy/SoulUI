@@ -181,6 +181,7 @@ end
 local function ApplyAuraVisibility(visual)
 	local cfg = DB()
 	Soul.Auras.SetShown(visual.Debuffs, cfg.showDebuffs ~= false)
+	Soul.Auras.SetShown(visual.Buffs, cfg.showDebuffs ~= false)
 	local purge = PurgeWanted()
 	Soul.Auras.SetShown(visual.Purge, purge)
 	Soul.Auras.SetShown(visual.PurgeGlow, purge and cfg.purgeGlow ~= false)
@@ -188,13 +189,34 @@ end
 
 -- Aura rows follow the stack computed in ApplyStyle (_auraY, _purgeX).
 -- Containers are only moved out of combat.
+local PlaceName
 local function LayoutAuras(visual)
 	if not visual._soulAuras or InCombatLockdown() then return end
 	local health = visual.Health
+	local gap = visual._gap or 2
+	local size = visual._debuffSize or 20
+	local rows = 0
+	if DB().showDebuffs ~= false then
+		if visual.Debuffs then rows = rows + 1 end
+		if visual.Buffs then rows = rows + 1 end
+	end
+	-- Auras sit in the gap between the bar and the name, one row each.
+	visual._nameLift = gap + rows * (size + gap)
 	if visual.Debuffs then
 		visual.Debuffs:ClearAllPoints()
-		visual.Debuffs:SetPoint("BOTTOMLEFT", health, "TOPLEFT", 0, visual._auraY or 3)
+		visual.Debuffs:SetPoint("BOTTOMLEFT", health, "TOPLEFT", 0, gap)
+		visual.Debuffs:SetHeight(size)
 	end
+	if visual.Buffs then
+		visual.Buffs:ClearAllPoints()
+		visual.Buffs:SetPoint("BOTTOMLEFT", health, "TOPLEFT", 0, gap + size + gap)
+		visual.Buffs:SetHeight(size)
+	end
+	if visual.Class and visual._nameAbove then
+		visual.Class:ClearAllPoints()
+		visual.Class:SetPoint("BOTTOMLEFT", health, "TOPLEFT", 0, visual._nameLift)
+	end
+	PlaceName(visual)
 	if visual.Purge then
 		visual.Purge:ClearAllPoints()
 		visual.Purge:SetPoint("LEFT", health, "RIGHT", visual._purgeX or 4, 0)
@@ -212,9 +234,13 @@ local function EnsureAuras(visual)
 	local cfg = DB()
 	local debuffSize = cfg.debuffSize or 20
 	local purgeSize = cfg.purgeSize or 20
+	visual._debuffSize = debuffSize
 	visual.Debuffs = Soul.Auras.Icons(visual, "none", {
-		{ key = "mine", filter = "HARMFUL|PLAYER", max = cfg.debuffMax or 5, size = debuffSize },
+		{ key = "debuffs", filter = "HARMFUL", max = cfg.debuffMax or 6, size = debuffSize, border = { 0.75, 0.15, 0.15 } },
 	}, { point = "BOTTOMLEFT", relPoint = "TOPLEFT", x = 0, y = 3, width = cfg.width, height = debuffSize })
+	visual.Buffs = Soul.Auras.Icons(visual, "none", {
+		{ key = "buffs", filter = "HELPFUL", max = cfg.debuffMax or 6, size = debuffSize },
+	}, { point = "BOTTOMLEFT", relPoint = "TOPLEFT", x = 0, y = 3 + debuffSize + 2, width = cfg.width, height = debuffSize })
 	visual.Purge = Soul.Auras.Icons(visual, "none", {
 		{ key = "purge", filter = "HELPFUL|DISPELLABLE", max = 3, size = purgeSize, border = { 0.25, 0.65, 1 } },
 	}, { width = purgeSize * 3 + 6, height = purgeSize })
@@ -301,14 +327,14 @@ local function UpdateName(visual)
 end
 
 -- Name sits after the classification mark when one is shown.
-local function PlaceName(visual)
+PlaceName = function(visual)
 	local name = visual.Name
 	local width = visual._w or 140
 	local shift = 0
 	if visual.Class:IsShown() then shift = (visual._classSize or 10) + 2 end
 	name:ClearAllPoints()
 	if visual._nameAbove then
-		name:SetPoint("BOTTOMLEFT", visual.Health, "TOPLEFT", shift, visual._gap or 2)
+		name:SetPoint("BOTTOMLEFT", visual.Health, "TOPLEFT", shift, visual._nameLift or visual._gap or 2)
 		name:SetWidth(max(10, width - shift))
 	else
 		name:SetPoint("LEFT", visual.Health, "LEFT", 4 + shift, 0)
@@ -445,7 +471,7 @@ local function ApplyStyle(visual)
 	icon:ClearAllPoints()
 	icon:SetSize(classSize, classSize)
 	if nameAbove then
-		icon:SetPoint("BOTTOMLEFT", health, "TOPLEFT", 0, gap + 1)
+		icon:SetPoint("BOTTOMLEFT", health, "TOPLEFT", 0, visual._nameLift or (gap + 1))
 	else
 		icon:SetPoint("LEFT", health, "LEFT", 3, 0)
 	end
@@ -476,7 +502,7 @@ local function ApplyStyle(visual)
 	marker:ClearAllPoints()
 	marker:SetSize(markerSize, markerSize)
 	if cfg.raidMarker == "top" then
-		local debuffBlock = cfg.showDebuffs ~= false and ((cfg.debuffSize or 20) + gap) or 0
+		local debuffBlock = cfg.showDebuffs ~= false and ((cfg.debuffSize or 20) + gap) * 2 or 0
 		marker:SetPoint("BOTTOM", health, "TOP", 0, auraY + debuffBlock)
 	else
 		marker:SetPoint("RIGHT", health, "LEFT", -(gap + arrowLane), 0)
@@ -638,6 +664,7 @@ local function Release(visual)
 	visual.Marker:Hide()
 	visual.Class:Hide()
 	Soul.Auras.SetUnit(visual.Debuffs, "none")
+	Soul.Auras.SetUnit(visual.Buffs, "none")
 	Soul.Auras.SetUnit(visual.Purge, "none")
 	Soul.Auras.SetUnit(visual.PurgeGlow, "none")
 	if plate then RestorePlate(plate) end
@@ -698,6 +725,7 @@ function NP:AddPlate(_, unit)
 	end
 	EnsureAuras(visual)
 	Soul.Auras.SetUnit(visual.Debuffs, unit)
+	Soul.Auras.SetUnit(visual.Buffs, unit)
 	Soul.Auras.SetUnit(visual.Purge, unit)
 	Soul.Auras.SetUnit(visual.PurgeGlow, unit)
 	ApplyAuraVisibility(visual)
@@ -819,6 +847,7 @@ function NP:OnEnable()
 			if not visual._soulAuras then
 				EnsureAuras(visual)
 				Soul.Auras.SetUnit(visual.Debuffs, visual.unit)
+				Soul.Auras.SetUnit(visual.Buffs, visual.unit)
 				Soul.Auras.SetUnit(visual.Purge, visual.unit)
 				Soul.Auras.SetUnit(visual.PurgeGlow, visual.unit)
 				ApplyAuraVisibility(visual)

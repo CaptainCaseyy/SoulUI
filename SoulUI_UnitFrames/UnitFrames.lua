@@ -118,6 +118,8 @@ local function UpdateName(frame)
 	frame.Name:SetTextColor(TEXT_R, TEXT_G, TEXT_B)
 end
 
+local StyleShield
+
 local function UpdateAbsorbs(frame, unit)
 	local bar = frame.Health
 	local db = DB()
@@ -132,6 +134,9 @@ local function UpdateAbsorbs(frame, unit)
 		over:SetWidth(width)
 		over:SetMinMaxValues(0, maxHealth)
 		over:SetValue(amount)
+		-- SetValue clears the texture color, so the sliders would appear to do nothing.
+		UF.PaintShield(absorb, "absorb")
+		UF.PaintShield(over, "overflow")
 	end
 	if db.healAbsorbs ~= false and UnitGetTotalHealAbsorbs then
 		local heal = bar._healAbsorb
@@ -310,37 +315,86 @@ end
 -- textures change here: these are our own non-secure bars, safe in combat.
 local SHIELD_STRIPES = "Interface\\RaidFrame\\Shield-Overlay"
 
+local function ShieldRGB(c)
+	local r = type(c) == "table" and (c[1] or c.r) or 1
+	local g = type(c) == "table" and (c[2] or c.g) or 1
+	local b = type(c) == "table" and (c[3] or c.b) or 1
+	if type(r) ~= "number" then r = 1 end
+	if type(g) ~= "number" then g = 1 end
+	if type(b) ~= "number" then b = 1 end
+	return r, g, b
+end
+
 local function ShieldTexture(bar, pattern)
-	if pattern == "striped" then
-		bar:SetStatusBarTexture(SHIELD_STRIPES)
-		local tex = bar:GetStatusBarTexture()
-		if tex then
-			pcall(tex.SetTexture, tex, SHIELD_STRIPES, "REPEAT", "REPEAT")
-			if tex.SetHorizTile then tex:SetHorizTile(true) end
-			if tex.SetVertTile then tex:SetVertTile(true) end
-		end
-	elseif pattern == "bar" then
+	if pattern == "bar" then
 		bar:SetStatusBarTexture(Soul:StatusbarTexture())
 	else
+		-- Solid white accepts SetStatusBarColor. The raid-frame stripe
+		-- texture does not, which is why a chosen color never appeared.
 		bar:SetStatusBarTexture(WHITE)
 	end
 end
 
-local function StyleShield(frame, db)
+-- Stripes live in their own clipped frame, sized to the fill, so the tile
+-- cannot draw past the shield.
+local function EnsureStripeClip(bar)
+	local clip = bar._stripeClip
+	if clip then return clip, bar._soulStripes end
+	clip = CreateFrame("Frame", nil, bar)
+	clip:SetClipsChildren(true)
+	clip:EnableMouse(false)
+	local stripes = clip:CreateTexture(nil, "ARTWORK")
+	stripes:SetTexture(SHIELD_STRIPES)
+	-- A texture set to the bar's own size stretches one stripe across the
+	-- whole height. A large tiled texture, cut by the clip, keeps the hatch
+	-- at the art's own size.
+	stripes:SetPoint("CENTER", clip, "CENTER")
+	stripes:SetSize(1024, 256)
+	if stripes.SetHorizTile then stripes:SetHorizTile(true) end
+	if stripes.SetVertTile then stripes:SetVertTile(true) end
+	if stripes.SetSnapToPixelGrid then
+		stripes:SetSnapToPixelGrid(false)
+		stripes:SetTexelSnappingBias(0)
+	end
+	bar._stripeClip = clip
+	bar._soulStripes = stripes
+	return clip, stripes
+end
+
+function UF.PaintShield(bar, role)
+	local db = DB()
+	local pattern = db.shieldPattern or "striped"
+	local r, g, b = ShieldRGB(db.shieldColor)
+	local alpha = role == "overflow" and (db.overflowAlpha or 0.75) or (db.shieldAlpha or 0.9)
+	if type(alpha) ~= "number" then alpha = 0.75 end
+	if alpha < 0 then alpha = 0 elseif alpha > 1 then alpha = 1 end
+	ShieldTexture(bar, pattern)
+	bar:SetStatusBarColor(r, g, b, alpha)
+	bar:SetAlpha(1)
+	local tex = bar:GetStatusBarTexture()
+	if tex then tex:SetVertexColor(r, g, b, alpha) end
+	local clip = bar._stripeClip
+	if pattern == "striped" then
+		local stripes
+		clip, stripes = EnsureStripeClip(bar)
+		local fill = bar:GetStatusBarTexture()
+		clip:ClearAllPoints()
+		if fill then clip:SetAllPoints(fill) end
+		stripes:SetVertexColor(r, g, b, 1)
+		clip:SetAlpha(alpha)
+		clip:Show()
+	elseif clip then
+		clip:Hide()
+	end
+end
+
+StyleShield = function(frame, db)
 	local health = frame.Health
 	local fill = health:GetStatusBarTexture()
 	local absorb, over = health._absorb, health._overAbsorb
 	local placement = db.shieldPlacement or "wash"
-	local pattern = db.shieldPattern or "solid"
-	local c = type(db.shieldColor) == "table" and db.shieldColor or nil
-	local r, g, b = c and c[1] or 0.6, c and c[2] or 0.85, c and c[3] or 1
-	local alpha = db.shieldAlpha or 0.5
-	local overR, overG, overB = c and c[1] or 0.75, c and c[2] or 0.9, c and c[3] or 1
-	local overAlpha = db.overflowAlpha or 0.22
-	ShieldTexture(absorb, pattern)
-	ShieldTexture(over, pattern)
-	absorb:SetStatusBarColor(r, g, b, alpha)
-	over:SetStatusBarColor(overR, overG, overB, overAlpha)
+	UF.PaintShield(absorb, "absorb")
+	UF.PaintShield(over, "overflow")
 	local h = health:GetHeight() or 20
 	local strip = math.max(2, math.floor(h * 0.2 + 0.5))
 	absorb:ClearAllPoints()
@@ -369,8 +423,6 @@ local function Skin(frame)
 	local tex = Soul:StatusbarTexture()
 	frame.Health:SetStatusBarTexture(tex)
 	frame.Power:SetStatusBarTexture(tex)
-	frame.Health._absorb:SetStatusBarTexture(WHITE)
-	frame.Health._overAbsorb:SetStatusBarTexture(WHITE)
 	frame.Health._healAbsorb:SetStatusBarTexture(WHITE)
 
 	local br, bg, bb, ba = RGBA(db.borderColor, 0, 0, 0, 1)
@@ -381,11 +433,15 @@ local function Skin(frame)
 
 	frame.Gloss:SetAlpha(db.gloss == false and 0 or 1)
 	frame.GlossLine:SetAlpha(db.gloss == false and 0 or 1)
-	frame.Health._absorbClip:SetAlpha(db.absorbs == false and 0 or 1)
-	frame.Health._overClip:SetAlpha(1)
-	frame.Health._overAbsorb:SetAlpha(db.absorbs == false and 0 or 1)
 	frame.Health._healAbsorb:SetAlpha(db.healAbsorbs == false and 0 or 1)
 	StyleShield(frame, db)
+	-- After the shield is painted, so a hidden absorb does not get its
+	-- opacity put back by the slider.
+	frame.Health._absorbClip:SetAlpha(db.absorbs == false and 0 or 1)
+	frame.Health._overClip:SetAlpha(1)
+	if db.absorbs == false then
+		frame.Health._overAbsorb:SetAlpha(0)
+	end
 
 	local shadow = db.textShadow ~= false
 	for _, fs in ipairs(frame._soulTexts) do
@@ -491,6 +547,14 @@ local function CreateUnitFrame(unit, parent)
 	frame.DispelGlow = Soul.Auras.Highlight(health, unit, "HARMFUL|RAID_PLAYER_DISPELLABLE", { 0.8, 0.35, 1 }, 2)
 	if unit == "target" or unit == "focus" then
 		frame.PurgeGlow = Soul.Auras.Highlight(health, unit, "HELPFUL|DISPELLABLE", { 0.25, 0.65, 1 }, 2)
+		-- Everything on the unit: buffs in the upper row, debuffs just above the bar.
+		local rowW = 240
+		frame.Buffs = Soul.Auras.Icons(frame, unit, {
+			{ key = "buffs", filter = "HELPFUL", max = 8, size = 22 },
+		}, { point = "BOTTOMLEFT", relPoint = "TOPLEFT", x = 0, y = 28, width = rowW, height = 24 })
+		frame.Debuffs = Soul.Auras.Icons(frame, unit, {
+			{ key = "debuffs", filter = "HARMFUL", max = 8, size = 22, border = { 0.75, 0.15, 0.15 } },
+		}, { point = "BOTTOMLEFT", relPoint = "TOPLEFT", x = 0, y = 2, width = rowW, height = 24 })
 	end
 	local fill = health:GetStatusBarTexture()
 
@@ -729,9 +793,11 @@ local function LayoutText(frame, live, px)
 		layout = "center"
 	end
 	local padY = Clamp(math.floor(innerH * 0.08 + 0.5), 2, 5)
-	if live.namePosition == "above" then
-		name:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", px, 3)
-		name:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -px, 3)
+		if live.namePosition == "above" then
+		local above = 3
+		if frame.Buffs or frame.Debuffs then above = 56 end
+		name:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", px, above)
+		name:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -px, above)
 	elseif layout == "center" then
 		name:SetPoint("LEFT", health, "LEFT", PAD_X, 0)
 	else
@@ -802,6 +868,16 @@ function UF:Layout(unit)
 		health:SetHeight(math.max(px, live.height - (showPower and px or 2 * px)))
 		Soul.Auras.Refit(frame.DispelGlow, health)
 		Soul.Auras.Refit(frame.PurgeGlow, health)
+		if frame.Buffs then
+			frame.Buffs:ClearAllPoints()
+			frame.Buffs:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 28)
+			frame.Buffs:SetWidth(math.max(80, live.width))
+		end
+		if frame.Debuffs then
+			frame.Debuffs:ClearAllPoints()
+			frame.Debuffs:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
+			frame.Debuffs:SetWidth(math.max(80, live.width))
+		end
 		Soul.Auras.SetShown(frame.DispelGlow, DB().dispelGlow ~= false)
 		UpdatePurgeGlow(frame)
 		power:SetShown(showPower)

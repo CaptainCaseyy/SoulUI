@@ -847,6 +847,7 @@ local GLYPHS = {
 		{ -0.25, 0.22, -0.19, -0.34 }, { -0.19, -0.34, 0.19, -0.34 }, { 0.19, -0.34, 0.25, 0.22 },
 	},
 	back = { { 0.12, 0.3, -0.16, 0 }, { -0.16, 0, 0.12, -0.3 } },
+	chevron = { { -0.28, 0.16, 0.02, -0.18 }, { -0.02, -0.18, 0.28, 0.16 } },
 }
 
 local ICON_IDLE = { 0.62, 0.64, 0.67 }
@@ -988,8 +989,7 @@ function DM:Apply()
 			Soul:Print("Reload the UI (/reload) so the damage meters can take over again.")
 		end
 	end
-	local width = Soul.Pixel:Scale(db.width or 260)
-	local rowHeight, gap, rows, headerH = Geometry(db)
+	local rowHeight, gap, sharedRows, headerH = Geometry(db)
 	local stride = rowHeight + gap
 	local headerColor = db.headerColor or { 0.106, 0.106, 0.106, 1 }
 	local headerFont = db.headerFontSize or 0
@@ -1004,11 +1004,22 @@ function DM:Apply()
 		local window = self.windows[i]
 		local cfg = db.windows[i]
 		StopScrollAnim(window)
+		local width = cfg.pixelWidth or Soul.Pixel:Scale(cfg.width or db.width or 260)
+		local height = cfg.pixelHeight
+		local rows
+		if height then
+			rows = math_floor((height - headerH - gap) / stride + 0.001)
+		else
+			rows = cfg.rows or sharedRows
+			height = headerH + gap + rows * stride - gap
+		end
+		if rows > MAX_ROWS then rows = MAX_ROWS elseif rows < 1 then rows = 1 end
 		window._stride = stride
 		window._gap = gap
+		window._headerH = headerH
 		window._visible = rows
 		window:SetWidth(width)
-		window:SetHeight(headerH + gap + rows * stride - gap)
+		window:SetHeight(height)
 
 		-- Header
 		window.Header:SetHeight(headerH)
@@ -1049,8 +1060,14 @@ function DM:Apply()
 		window.Back:Layout(math_max(7, glyphSize - 2), thickness)
 		window.Back:ClearAllPoints()
 		window.Back:SetPoint("CENTER", window.Header, "BOTTOMLEFT", pad + glyphSize / 2 - 2, midY)
-		window._titleX = pad
-		window._titleBackX = pad + glyphSize + 2
+		if window.Kind then
+			window.Kind:SetSize(iconSize, iconSize)
+			window.Kind.Glyph:Layout(glyphSize, thickness)
+			window.Kind:ClearAllPoints()
+			window.Kind:SetPoint("BOTTOMLEFT", window.Header, "BOTTOMLEFT", pad - 2, midY - iconSize / 2)
+		end
+		window._titleX = pad + iconSize + 2
+		window._titleBackX = pad + iconSize + glyphSize + 4
 		window._baseY = baseY
 		window._titleShifted = nil -- PaintHeader anchors the title
 		window.Dot:SetSize(Soul.Pixel:Scale(3), Soul.Pixel:Scale(3))
@@ -1097,6 +1114,7 @@ function DM:Apply()
 		end
 		Soul:ShowBorder(window, db.border and true or false, 1)
 		window.ButtonsShown(db.headerIconsOnHover ~= true)
+		if window.Grip then window.Grip:SetFrameLevel(window:GetFrameLevel() + 8) end
 		window._wheel = nil
 		window._scrollTarget = 0
 		PlaceScroll(window, 0)
@@ -1219,11 +1237,56 @@ end
 local TYPE_ITEMS = MenuItems(TYPES)
 local SEGMENT_ITEMS = MenuItems(SEGMENTS)
 
+local function SaveMeterSpot(frame, index)
+	local cx, cy = frame:GetCenter()
+	local ux, uy = UIParent:GetCenter()
+	if not cx or not ux then return end
+	local scale = frame:GetEffectiveScale() or 1
+	local ui = UIParent:GetEffectiveScale() or 1
+	if scale <= 0 or ui <= 0 then return end
+	local ratio = scale / ui
+	if Soul.ClampToScreen then Soul:ClampToScreen(frame) end
+	local cx2, cy2 = frame:GetCenter()
+	if not cx2 then cx2, cy2 = cx, cy end
+	local x = Soul.Pixel:Scale((cx2 - ux) * ratio)
+	local y = Soul.Pixel:Scale((cy2 - uy) * ratio)
+	local key = "DamageMeters:" .. index
+	Soul:ActiveProfile().unlock.positions[key] = {
+		point = "CENTER", relPoint = "CENTER", x = x, y = y,
+	}
+	local cfg = DB().windows[index]
+	if cfg then cfg.x, cfg.y = x, y end
+end
+
+local function ResizeMeter(frame, grip)
+	local x, y = GetCursorPosition()
+	local scale = frame:GetEffectiveScale() or 1
+	if scale <= 0 then scale = 1 end
+	local dx = (x - grip._x) / scale
+	local dy = (grip._y - y) / scale
+	local width = grip._w + dx
+	local height = grip._h + dy
+	if width < 140 then width = 140 elseif width > 900 then width = 900 end
+	if height < 48 then height = 48 elseif height > 900 then height = 900 end
+	frame:SetWidth(width)
+	frame:SetHeight(height)
+end
+
+local function CommitMeterSize(frame, index)
+	local cfg = DB().windows[index]
+	if not cfg then return end
+	cfg.pixelWidth = frame:GetWidth()
+	cfg.pixelHeight = frame:GetHeight()
+	SaveMeterSpot(frame, index)
+	DM:Apply()
+end
+
 local function MakeWindow(index)
 	local window = CreateFrame("Frame", "SoulUIMeter" .. index, UIParent)
 	window._index = index
 	window._animKey = "meter" .. index
 	window:SetClampedToScreen(true)
+	window:SetMovable(true)
 	Soul:Round(window)
 	local bg = window:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
@@ -1281,9 +1344,27 @@ local function MakeWindow(index)
 		if window._iconsAlways then return end
 		for _, button in pairs(window.Buttons) do button:SetAlpha(on and 1 or 0) end
 	end
-	header:SetScript("OnEnter", function() HoverIcons(true) end)
+	header:SetScript("OnEnter", function()
+		HoverIcons(true)
+		GameTooltip:SetOwner(header, "ANCHOR_TOP")
+		GameTooltip:AddLine("Drag to move", 1, 1, 1)
+		GameTooltip:Show()
+	end)
 	header:SetScript("OnLeave", function()
 		if not header:IsMouseOver() then HoverIcons(false) end
+		GameTooltip:Hide()
+	end)
+	header:RegisterForDrag("LeftButton")
+	header:SetScript("OnDragStart", function()
+		if Soul.unlocking then return end
+		window._dragging = true
+		window:StartMoving()
+	end)
+	header:SetScript("OnDragStop", function()
+		if not window._dragging then return end
+		window._dragging = nil
+		window:StopMovingOrSizing()
+		SaveMeterSpot(window, index)
 	end)
 	for _, button in pairs(window.Buttons) do
 		button:HookScript("OnEnter", function() HoverIcons(true) end)
@@ -1311,25 +1392,94 @@ local function MakeWindow(index)
 	-- Click the title: pick the meter type (right-click: the segment). While a
 	-- spell breakdown is open, a click goes back.
 	header:SetScript("OnClick", function(_, button)
+		if window._dragging then return end
 		if window._breakdown then
 			window._breakdown = nil
 			DM:NewView(index)
 			return
 		end
-		local UI = Soul.UI
-		if not UI then return end
-		if button == "RightButton" then
-			UI.OpenMenu(title, SEGMENT_ITEMS, DB().windows[index].segment, function(key)
+		if button == "RightButton" and Soul.UI then
+			Soul.UI.OpenMenu(header, SEGMENT_ITEMS, DB().windows[index].segment, function(key)
 				DB().windows[index].segment = key
 				DM:NewView(index)
 			end, 160)
-		else
-			UI.OpenMenu(title, TYPE_ITEMS, DB().windows[index].type, function(key)
-				DB().windows[index].type = key
-				DM:NewView(index)
-			end, 180)
 		end
 	end)
+
+	local kind = HeaderButton(header, "chevron", "Change what this meter shows")
+	kind:SetAlpha(1)
+	window.Kind = kind
+	kind:SetScript("OnClick", function()
+		if not Soul.UI then return end
+		if window._breakdown then
+			window._breakdown = nil
+			DM:NewView(index)
+			return
+		end
+		Soul.UI.OpenMenu(kind, TYPE_ITEMS, DB().windows[index].type, function(key)
+			DB().windows[index].type = key
+			window._breakdown = nil
+			DM:NewView(index)
+		end, 180)
+	end)
+
+	local grip = CreateFrame("Button", nil, window)
+	grip:SetSize(18, 18)
+	grip:SetPoint("BOTTOMRIGHT", -1, 1)
+	grip:SetFrameLevel(window:GetFrameLevel() + 8)
+	grip:RegisterForClicks("LeftButtonDown")
+	grip:EnableMouse(true)
+	grip.lines = {}
+	for i = 1, 3 do
+		local line = grip:CreateLine(nil, "OVERLAY")
+		line:SetThickness(1)
+		local inset = 3 + (i - 1) * 4
+		line:SetStartPoint("BOTTOMRIGHT", grip, -2, inset)
+		line:SetEndPoint("BOTTOMRIGHT", grip, -inset, 2)
+		line:SetColorTexture(1, 1, 1, 0.45)
+		grip.lines[i] = line
+	end
+	grip:SetScript("OnEnter", function()
+		for i = 1, #grip.lines do grip.lines[i]:SetColorTexture(1, 1, 1, 0.9) end
+		GameTooltip:SetOwner(grip, "ANCHOR_TOP")
+		GameTooltip:AddLine("Drag to resize", 1, 1, 1)
+		GameTooltip:Show()
+	end)
+	grip:SetScript("OnLeave", function()
+		for i = 1, #grip.lines do grip.lines[i]:SetColorTexture(1, 1, 1, 0.45) end
+		GameTooltip:Hide()
+	end)
+	local function StopResize()
+		if not grip._sizing then return end
+		grip._sizing = nil
+		grip:SetScript("OnUpdate", nil)
+		window:SetClampedToScreen(true)
+		CommitMeterSize(window, index)
+	end
+	grip:SetScript("OnMouseDown", function(_, button)
+		if button ~= "LeftButton" or grip._sizing or Soul.unlocking then return end
+		local x, y = GetCursorPosition()
+		local left, top = window:GetLeft(), window:GetTop()
+		grip._sizing = true
+		grip._x, grip._y = x, y
+		grip._w = window:GetWidth()
+		grip._h = window:GetHeight()
+		window:SetClampedToScreen(false)
+		if left and top then
+			window:ClearAllPoints()
+			window:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+		end
+		-- Follow from the click itself. A drag gesture waits for the cursor
+		-- to move, which never happens when the grip is already at the edge.
+		grip:SetScript("OnUpdate", function()
+			if not IsMouseButtonDown("LeftButton") then
+				StopResize()
+				return
+			end
+			ResizeMeter(window, grip)
+		end)
+	end)
+	window.Grip = grip
 
 	-- Body: clips the row strip so rows can glide in and out.
 	local body = CreateFrame("Frame", nil, window)
@@ -1474,18 +1624,17 @@ function DM:OnEnable()
 				return { point = "CENTER", relPoint = "CENTER", x = cfg.x, y = cfg.y }
 			end,
 			onResize = function(width, height, dir)
-				local db = DB()
-				local rows = db.rows or 6
-				if rows < 1 then rows = 1 end
-				local oldW = db.width or width
-				local oldH = db.rowHeight or 18
+				local cfg = DB().windows[index]
+				local frame = DM.windows[index]
+				local oldW = cfg.pixelWidth or (frame and frame:GetWidth()) or width
+				local oldH = cfg.pixelHeight or (frame and frame:GetHeight()) or height
 				if dir == 1 or dir == -1 then
-					db.width = Soul:ScaleStep(oldW, dir, 120, 500)
-					db.rowHeight = Soul:ScaleStep(oldH, dir, 10, 40)
+					local step = dir == 1 and 1.06 or 0.94
+					cfg.pixelWidth = math_max(140, math_min(900, oldW * step))
+					cfg.pixelHeight = math_max(48, math_min(900, oldH * step))
 				else
-					db.width = Soul:MatchSize(oldW, width, 120, 500)
-					local rowH = (height - (db.headerHeight or 22)) / rows - (db.rowGap or 1)
-					db.rowHeight = Soul:MatchSize(oldH, rowH, 10, 40)
+					cfg.pixelWidth = math_max(140, math_min(900, width))
+					cfg.pixelHeight = math_max(48, math_min(900, height))
 				end
 				DM:Apply()
 			end,

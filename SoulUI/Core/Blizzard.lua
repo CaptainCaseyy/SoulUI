@@ -232,6 +232,58 @@ local function RegisterViewers()
 	end
 end
 
+-- The retail micro menu and bag row are Edit Mode frames. On this window
+-- they sit past the bottom edge. Pull a frame up only when it is a direct
+-- child of UIParent and Edit Mode is closed, so a drag in Edit Mode is left
+-- alone.
+local CHROME = { "MicroMenuContainer", "BagsBar" }
+
+local function PullInside(frame)
+	if not frame or not frame.GetBottom or not frame.GetPoint then return end
+	if InCombatLockdown() and frame.IsProtected and frame:IsProtected() then return end
+	local scale = frame:GetEffectiveScale()
+	local ui = UIParent:GetEffectiveScale()
+	if not scale or scale <= 0 or not ui or ui <= 0 then return end
+	local ratio = scale / ui
+	local left, right = frame:GetLeft(), frame:GetRight()
+	local top, bottom = frame:GetTop(), frame:GetBottom()
+	if not left or not right or not top or not bottom then return end
+	left, right, top, bottom = left * ratio, right * ratio, top * ratio, bottom * ratio
+	local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
+	if type(sw) ~= "number" or type(sh) ~= "number" then return end
+	local margin = 4
+	local dx, dy = 0, 0
+	if bottom < margin then dy = margin - bottom end
+	if top + dy > sh - margin then
+		local pulled = (sh - margin) - top
+		if bottom + pulled >= margin then dy = pulled end
+	end
+	if left < margin then dx = margin - left end
+	if right + dx > sw - margin then
+		local pulled = (sw - margin) - right
+		if left + pulled >= margin then dx = pulled end
+	end
+	if dx == 0 and dy == 0 then return end
+	-- A clipped icon row only needs a small nudge. A huge shift is a bad
+	-- measurement, and applying it throws the menu off the window.
+	if dx > 64 or dx < -64 or dy > 64 or dy < -64 then return end
+	local point, rel, relPoint, x, y = frame:GetPoint(1)
+	if not point or not rel then return end
+	frame:ClearAllPoints()
+	frame:SetPoint(point, rel, relPoint, (x or 0) + dx / ratio, (y or 0) + dy / ratio)
+end
+
+local function KeepChromeOnScreen()
+	if InCombatLockdown() then
+		Soul:RunAfterCombat("blizzard-chrome", KeepChromeOnScreen)
+		return
+	end
+	if EditModeManagerFrame and EditModeManagerFrame:IsShown() then return end
+	for i = 1, #CHROME do
+		PullInside(_G[CHROME[i]])
+	end
+end
+
 Soul:On("Ready", function()
 	if C_AddOns and C_AddOns.LoadAddOn and not _G.EssentialCooldownViewer then
 		pcall(C_AddOns.LoadAddOn, "Blizzard_CooldownViewer")
@@ -240,5 +292,16 @@ Soul:On("Ready", function()
 	Blizz.Refresh()
 	-- Modules apply their own settings after Ready; check the cast bar again.
 	C_Timer.After(1, Blizz.Refresh)
+	C_Timer.After(0.5, KeepChromeOnScreen)
+	C_Timer.After(1.5, KeepChromeOnScreen)
+	for i = 1, #CHROME do
+		local frame = _G[CHROME[i]]
+		if frame and not frame._soulChrome then
+			frame._soulChrome = true
+			frame:HookScript("OnShow", function()
+				C_Timer.After(0, KeepChromeOnScreen)
+			end)
+		end
+	end
 end)
 Soul:On("ProfileChanged", function() Blizz.Refresh() end)

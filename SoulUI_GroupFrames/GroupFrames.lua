@@ -398,9 +398,19 @@ local function LayoutChrome(button, cfg)
 
 	-- Absorb overlay, clipped to the missing part of the bar.
 	local absorb = button.Absorb
-	absorb:SetStatusBarTexture(texture)
+	local frames = Soul:GetModule("UnitFrames")
+	if frames and frames.PaintShield then
+		frames.PaintShield(absorb, "absorb")
+		if button.OverAbsorb then frames.PaintShield(button.OverAbsorb, "overflow") end
+	else
+		absorb:SetStatusBarTexture(texture)
+		absorb:SetStatusBarColor(1, 1, 1, 0.9)
+	end
 	absorb:SetWidth(math.max(px, w - px * 2))
-	button.AbsorbClip:SetShown(cfg.showAbsorbs ~= false)
+	local showAbsorb = cfg.showAbsorbs ~= false
+	button.AbsorbClip:SetShown(showAbsorb)
+	if button.OverClip then button.OverClip:SetShown(showAbsorb) end
+	if button.OverAbsorb then button.OverAbsorb:SetWidth(math.max(px, w - px * 2)) end
 
 	button.Shade:SetShown(cfg.gradient ~= false)
 
@@ -611,9 +621,21 @@ local function UpdateHealth(button, unit, cfg)
 		text:SetAlpha(1)
 	end
 	if cfg.showAbsorbs ~= false and UnitGetTotalAbsorbs then
+		local amount = UnitGetTotalAbsorbs(unit)
+		local maxHealth = UnitHealthMax(unit)
 		local absorb = button.Absorb
-		absorb:SetMinMaxValues(0, UnitHealthMax(unit))
-		absorb:SetValue(UnitGetTotalAbsorbs(unit))
+		absorb:SetMinMaxValues(0, maxHealth)
+		absorb:SetValue(amount)
+		local over = button.OverAbsorb
+		if over then
+			over:SetMinMaxValues(0, maxHealth)
+			over:SetValue(amount)
+		end
+		local frames = Soul:GetModule("UnitFrames")
+		if frames and frames.PaintShield then
+			frames.PaintShield(absorb, "absorb")
+			if over then frames.PaintShield(over, "overflow") end
+		end
 	end
 end
 
@@ -771,6 +793,23 @@ local function StyleButton(button, cfg)
 	absorb:SetValue(0)
 	button.Absorb = absorb
 	button.AbsorbClip = clip
+
+	-- The part of a shield that does not fit past full health, same wash the
+	-- unit frames use. Reverse fill grows in from the right over the health.
+	local overClip = CreateFrame("Frame", nil, health)
+	if overClip.SetClipsChildren then overClip:SetClipsChildren(true) end
+	overClip:SetPoint("TOPLEFT", health, "TOPLEFT")
+	overClip:SetPoint("BOTTOMRIGHT", fill, "BOTTOMRIGHT")
+	local over = CreateFrame("StatusBar", nil, overClip)
+	over:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
+	over:SetReverseFill(true)
+	over:SetPoint("TOPRIGHT", health, "TOPRIGHT")
+	over:SetPoint("BOTTOMRIGHT", health, "BOTTOMRIGHT")
+	over:SetWidth(200)
+	over:SetMinMaxValues(0, 1)
+	over:SetValue(0)
+	button.OverAbsorb = over
+	button.OverClip = overClip
 
 	-- Soft top-light / bottom-shade for depth.
 	local shade = health:CreateTexture(nil, "ARTWORK", nil, 7)

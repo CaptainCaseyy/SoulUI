@@ -2,6 +2,133 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-13 — laptop — 0.9.14 current profile is the default layout
+
+Layout version 4 is the owner's live Default profile: frame positions, bar sizes, meter window, unit frame sizes, and the quality-of-life switches that were on. A new profile and Reset layout both start there. Class color is the default accent. The settings window scale starts at 1.55.
+
+Files: `Layout.lua`, `Database.lua`, Defaults in Unit Frames, Action Bars, Damage Meters, Nameplates, Group Frames, Resource Bars, and QoL.
+
+## 2026-11-13 — laptop — 0.9.14 meter resize starts on click
+
+The corner waited for a drag gesture, so a hold at the screen edge never moved far enough to begin. Resizing now starts on mouse-down and keeps following until the button is released, even after the cursor leaves the grip.
+
+Files: `DamageMeters.lua`.
+
+## 2026-11-13 — laptop — 0.9.13 smooth meter resize
+
+Dragging a meter's corner was rebuilding the window on a pixel grid, so the size jumped. The frame now tracks the cursor for the whole drag and keeps that size when you let go. The top-left corner stays put.
+
+Files: `DamageMeters.lua`.
+
+## 2026-11-13 — laptop — 0.9.12 move and resize meters directly
+
+Each damage meter can be dragged by its header and resized from a grip in the bottom-right corner, without edit mode. Width and row count are stored on that meter. A chevron on the left of the header opens the list of what the meter shows. Right-click the header still switches Current and Overall.
+
+Files: `DamageMeters.lua`.
+
+## 2026-11-13 — laptop — 0.9.11 dropdowns above the element panel
+
+The element panel and the edit toolbar were on the same layer as dropdown lists, and a click raised the panel over the list. The panel and toolbar sit under the lists now. A dropdown list is raised again on the next frame so the click cannot cover it.
+
+Files: `UIKit.lua`, `Unlock.lua`, `Core.lua`.
+
+## 2026-11-13 — laptop — 0.9.10 stacks, procs, press flash, aura stack
+
+Stack numbers use a thick outline and a larger automatic size. Action Bars has a stack brightness slider, and the size slider goes higher.
+
+Procs use Blizzard's gold burst and spinning ring, scaled to the button, instead of the thin edge. The pressed, checked and highlight textures are anchored to the button, including on mouse down, so they follow that button's size instead of staying at 45px.
+
+Nameplate buffs and debuffs sit between the health bar and the name. The name and the classification mark move up with them.
+
+Files: `ActionBars.lua`, `Defaults.lua` in Action Bars, `PagesModules.lua`, `Nameplates.lua`, `UnitFrames.lua`, `Core.lua`.
+
+## 2026-11-13 — laptop — 0.9.9 extra action button, target auras
+
+The extra action button sits on the main bar, and that bar is faded out, so a chest or zone button never appears. The extra bar and the zone ability bar are moved onto the screen, above center, and kept clickable.
+
+Target and focus frames had no aura icons. They now show the unit's buffs and debuffs. Nameplates show the same two rows, not only your own debuffs.
+
+Files: `ActionBars.lua`, `UnitFrames.lua`, `Nameplates.lua`, `Core.lua`. Needs a `/reload`. Not confirmed on the chest yet.
+
+## 2026-11-13 — laptop — 0.9.8 bags stay out of edit mode
+
+Edit mode was opening the bag window, and the mover was the full window, so nothing underneath could be selected. The window stays closed while editing. A small Bags tag marks its spot. If the bags were already open, they close for the session and open again when edit mode ends.
+
+Files: `Unlock.lua`, `Bags.lua`, `Core.lua`.
+
+## 2026-11-13 — laptop — 0.9.7 shield hatch, bottom menu
+
+The striped shield tiled horizontally only, so each stripe stretched to the full bar height and read as a few huge diagonals. It now tiles in both directions inside the clip, which keeps the hatch at the texture's own size.
+
+The retail micro menu and bag row were drawn past the bottom edge of the window. After login, and when they show, they are pulled back inside while Edit Mode is closed.
+
+Files: `UnitFrames.lua`, `Blizzard.lua`, `Core.lua`.
+
+## 2026-11-13 — laptop — 0.9.6 shield color, keep every frame on screen
+
+The raid-frame stripe texture ignores status-bar color, so the shield stayed white. The fill is a white bar tinted with the chosen color, and the stripes sit in a clip the size of that fill. The stored shield color has no red channel, so it paints white until the color is picked again. The color picker writes the color when it closes.
+
+The previous on-screen nudge read GetRect, which does not match a frame whose scale differs from the parent, so a bar saved past the edge never moved. The nudge now uses the anchor and the frame's real size. It runs again shortly after login, and the escape menu and editor windows use it too. Saved positions are not rewritten.
+
+Files: `UnitFrames.lua`, `Unlock.lua`, `Core.lua`, `UIKit.lua`, `Menu.lua`.
+
+## 2026-11-13 — laptop — 0.9.5 frames back on screen, shield stripes
+
+The bag window rewrote its anchor on every refresh and walked off the window. That nudge is gone. Frames that sit past the current window (the layout was saved at 1920x1200; this client is smaller) are pulled back inside once. The saved position is not changed.
+
+The striped shield was a second texture, tiled horizontally and vertically and anchored to the health fill, so the lines ran outside the bar. The stripes are the status bar texture again, tiled across the fill only. The opacity slider is the bar's alpha.
+
+Files: `Unlock.lua`, `Bags.lua`, `UnitFrames.lua`, core toc.
+
+## 2026-11-13 — laptop — 0.9.4 quality chip, striped shield, square map
+
+The bag chip was still wrong because a bare item id does not carry Midnight's reagent mark. The slot now asks `GetItemReagentQualityInfo` with the item link (the id only if the link is missing) and draws `iconInventory`. The template's own diamond overlay is hidden. The thin slot border is unchanged. The bag window nudges itself back on screen when the sidebar pushes it off the right edge.
+
+Striped shields were a solid white fill under a stripe texture that ignores its own alpha, so the slider did not change the pattern you see. The fill is clear and the bar's alpha is the slider. Party and raid frames now draw the same overflow wash over the health bar, not only the piece past the end of the health.
+
+Square minimap sets the client's square mask (texture 130937). A file path was leaving the round mask in place. Compass and ring art are hidden while the option is on.
+
+Files: `Bags.lua`, `UnitFrames.lua`, `GroupFrames.lua`, `Skins.lua`, `Core.lua`, those tocs. Not confirmed in game yet.
+
+## 2026-11-13 — laptop — 0.9.3 crafting quality, shields, minimap
+
+The bag quality mark was still the old Dragonflight diamond (`Professions-Icon-Quality-Tier`). Asking the game by item id did not return the Midnight chip. See 0.9.4. The thin slot border was put back.
+
+The striped shield texture ignores its own alpha. The opacity slider now fades the whole shield bar, stripes included.
+
+Shield sliders did nothing because every health update cleared the shield color. The color is put back after each update. The default shield is a white striped pattern, at 90% on the part past your health and 75% on the overflow laid over the bar. Party frames use the same shield.
+
+Square minimap was only changing the mask, so the round border art stayed. That border is hidden while the option is on, and a square edge is drawn instead.
+
+Not checked after this change. `/reload`. Open bags on a quality reagent. Change shield opacity with a shield up. Turn on square minimap.
+
+## 2026-11-13 — laptop — 0.9.2 bag layouts and the rest of the helpers
+
+The bag window was one category grid. It now has three styles (one categorized bag, one block per bag, and a list), a category sidebar, alt-click to pin, shift-right-click to split a stack, a quick-action button for a spell such as Disenchant, an Alts list of what each character was carrying the last time their bags were opened, and a Gold button for recent gold changes. Alts and gold live on the account, not in the profile.
+
+Quality of life gained the rest of the practical set. `/soulpull 10` counts down and talks in party or raid. World marker buttons are secure so they survive combat. A ready check lists how many helpful auras each person is showing, and says when that number is hidden. `/soulkeys` shows your keystone. Shift-drag moves a handful of Blizzard windows. `/way x y` drops a map pin. Chat can be covered until you mouse over it. Target distance, rested, healthstone, unspent talents, a movement cooldown, the scrolling combat text font, a cursor trail, and a GCD ring are switches. The quest tracker header, the minimap, and chat can take the SoulUI font. Chat message text is not rewritten.
+
+Not in this build, because the game does not hand an addon that data: other players' keystones, a combat-log damage stream, and a full crest-upgrade spreadsheet. The buff check is a count, not a flask-by-flask raid window.
+
+Files: `Bags.lua`, `BagsExtra.lua`, `Defaults.lua` in Bags and QoL, `Raid.lua`, `Tools.lua`, `Skins.lua`, `PagesBags.lua`, `PagesQoLMore.lua`, tocs.
+
+Not tested in game. Restart once so the new files load. Open bags, switch Style, alt-click an item, and try `/soulpull 5` and `/way`.
+
+## 2026-11-13 — laptop — 0.9.1 bags and quality of life wired in
+
+The bags and quality-of-life addons were written but not finished. The quality-of-life toc asked for a Keybinds file that does not exist, so the addon would not load. There was no settings page, and neither addon was on the module list.
+
+- Removed the missing file from the toc.
+- `/soul` now has Bags (already written) and Quality of Life, under Utility. Every switch calls Apply, so it takes effect without a reload.
+- Both addons are on General > Modules, and their frames are on the show/hide page.
+- The group death alert also watches the player, not only party and raid units.
+
+Bags is one window: categories, search, sort, item level, quality borders, gold and currencies, plus the bank and warband bank. Blizzard's bags are parked, not hidden with Hide(). Quality of life covers repair, junk selling, loot and popup helpers, quests, chat copy, and the on-screen trackers. Anything that accepts or skips for you starts off. Repair and selling gray items start on.
+
+Files: `SoulUI_QoL.toc`, `Displays.lua`, `PagesQoL.lua`, `Pages.lua`, `SoulUI_Options.toc`.
+
+Not tested in game. Restart the client once so WoW sees the two new addons, then `/reload`. Open bags with B. Open a vendor for repair and junk. Open `/soul` and turn a tracker on, then `/soul move`.
+
 ## 2026-11-13 — laptop — 0.9.0 logo, clearer text, shields, clickable casts
 
 The owner asked for:

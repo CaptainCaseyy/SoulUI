@@ -127,6 +127,55 @@ local function QuietMain()
 	end
 end
 
+-- The extra action button (chest, vehicle, zone power) lives on Blizzard's
+-- bar. Fading the main bar hides it, and its saved spot can sit past the
+-- bottom of the window. Keep the button on UIParent, in the middle, clickable.
+local EXTRA_BARS = { "ExtraActionBarFrame", "ZoneAbilityFrame", "ExtraAbilityContainer" }
+
+local function BarOffScreen(frame)
+	local left, right = frame:GetLeft(), frame:GetRight()
+	local top, bottom = frame:GetTop(), frame:GetBottom()
+	if not left or not right or not top or not bottom then return true end
+	local scale = frame:GetEffectiveScale() or 1
+	local ui = UIParent:GetEffectiveScale() or 1
+	if scale <= 0 or ui <= 0 then return true end
+	local ratio = scale / ui
+	local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
+	left, right, top, bottom = left * ratio, right * ratio, top * ratio, bottom * ratio
+	return left < 8 or bottom < 8 or right > sw - 8 or top > sh - 8
+end
+
+local function RescueExtra(name)
+	local frame = _G[name]
+	if not frame then return end
+	if InCombatLockdown() then
+		Soul:RunAfterCombat("extra:" .. name, function() RescueExtra(name) end)
+		return
+	end
+	local main = _G.MainActionBar or _G.MainMenuBar
+	local parent = frame:GetParent()
+	local buried = parent == main or (parent and parent.GetAlpha and (parent:GetAlpha() or 1) < 0.05)
+	if buried or BarOffScreen(frame) then
+		frame:SetParent(UIParent)
+		frame:ClearAllPoints()
+		frame:SetPoint("CENTER", UIParent, "CENTER", 0, name == "ZoneAbilityFrame" and 20 or 90)
+	end
+	frame:SetAlpha(1)
+	frame:SetFrameStrata("HIGH")
+	if frame.EnableMouse then frame:EnableMouse(true) end
+	local button = _G.ExtraActionButton1
+	if button and button:GetParent() == frame then
+		button:SetAlpha(1)
+		if button.EnableMouse then button:EnableMouse(true) end
+	end
+end
+
+local function RescueExtras()
+	for i = 1, #EXTRA_BARS do
+		RescueExtra(EXTRA_BARS[i])
+	end
+end
+
 local function Park()
 	for i = 1, #PARK_FRAMES do
 		ParkFrame(_G[PARK_FRAMES[i]])
@@ -139,13 +188,22 @@ local function Park()
 		end
 	end
 	QuietMain()
+	RescueExtras()
 end
 
 local watcher = CreateFrame("Frame")
 watcher:RegisterEvent("ADDON_LOADED")
-watcher:SetScript("OnEvent", function(_, _, name)
-	if name == "Blizzard_ActionBar" or name == "Blizzard_OverrideActionBar" then
+watcher:RegisterEvent("UPDATE_EXTRA_ACTIONBAR")
+watcher:RegisterEvent("PLAYER_ENTERING_WORLD")
+watcher:RegisterEvent("PLAYER_REGEN_ENABLED")
+watcher:SetScript("OnEvent", function(_, event, name)
+	if event == "ADDON_LOADED" and name ~= "Blizzard_ActionBar" and name ~= "Blizzard_OverrideActionBar" then
+		return
+	end
+	if event == "ADDON_LOADED" then
 		Park()
+	else
+		RescueExtras()
 	end
 end)
 Park()
@@ -371,7 +429,7 @@ local function TextSizes(btn)
 	local hotkey = db.hotkeySize or 0
 	if hotkey <= 0 then hotkey = math.max(8, math.floor(size * 0.27 + 0.5)) end
 	local count = db.countSize or 0
-	if count <= 0 then count = math.max(8, math.floor(size * 0.3 + 0.5)) end
+	if count <= 0 then count = math.max(14, math.floor(size * 0.46 + 0.5)) end
 	local macro = db.macroSize or 0
 	if macro <= 0 then macro = math.max(7, math.floor(size * 0.22 + 0.5)) end
 	return hotkey, count, macro
@@ -396,7 +454,17 @@ local function RefreshText(btn)
 		hotkey:SetShown(not cfg or cfg.showHotkey ~= false)
 	end
 	if btn.Count then
-		Soul:ApplyFont(btn.Count, countSize, "OUTLINE")
+		-- Thick outline, not the theme's soft shadow: a stack on a bright
+		-- icon disappears without it.
+		Soul:ApplyFont(btn.Count, countSize, "THICKOUTLINE")
+		if not btn._soulText then
+			local layer = CreateFrame("Frame", nil, btn)
+			layer:SetAllPoints(btn)
+			layer:SetFrameLevel(btn:GetFrameLevel() + 12)
+			layer:EnableMouse(false)
+			btn._soulText = layer
+		end
+		btn.Count:SetParent(btn._soulText)
 		btn.Count:ClearAllPoints()
 		local anchor = db.countAnchor or "BOTTOMRIGHT"
 		local ox = anchor:find("LEFT") and 2 or (anchor:find("RIGHT") and -2 or 0)
@@ -404,7 +472,12 @@ local function RefreshText(btn)
 		btn.Count:SetPoint(anchor, btn, anchor, ox, oy)
 		btn.Count:SetJustifyH(anchor:find("LEFT") and "LEFT" or (anchor:find("RIGHT") and "RIGHT" or "CENTER"))
 		local cc = db.countColor
-		if type(cc) == "table" then btn.Count:SetTextColor(cc[1], cc[2], cc[3]) else btn.Count:SetTextColor(1, 1, 1) end
+		local r, g, b = 1, 1, 1
+		if type(cc) == "table" then r, g, b = cc[1] or 1, cc[2] or 1, cc[3] or 1 end
+		local bright = db.countBright or 1
+		if type(bright) ~= "number" then bright = 1 end
+		if bright < 0.4 then bright = 0.4 elseif bright > 1 then bright = 1 end
+		btn.Count:SetTextColor(r, g, b, bright)
 		btn.Count:SetShadowColor(0, 0, 0, 1)
 		btn.Count:SetShadowOffset(1, -1)
 		btn.Count:SetShown(not cfg or cfg.showCount ~= false)
@@ -511,13 +584,35 @@ local function DropIconMask(btn)
 	mask:SetSize(0.001, 0.001)
 end
 
-local function Flat(texture, r, g, b, a)
-	if not texture then return end
+local function Flat(texture, btn, r, g, b, a)
+	if not texture or not btn then return end
 	texture:SetTexture("Interface\\Buttons\\WHITE8X8")
 	texture:SetTexCoord(0, 1, 0, 1)
 	texture:SetVertexColor(r, g, b, a)
 	texture:ClearAllPoints()
-	texture:SetAllPoints(texture:GetParent())
+	texture:SetPoint("TOPLEFT", btn, "TOPLEFT")
+	texture:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT")
+end
+
+-- Pressed, checked and highlight art is built for a 45px slot. Anchor it to
+-- the button itself so it follows that button's size.
+local function FitPress(btn)
+	local regions = {
+		btn.GetPushedTexture and btn:GetPushedTexture(),
+		btn.GetCheckedTexture and btn:GetCheckedTexture(),
+		btn.GetHighlightTexture and btn:GetHighlightTexture(),
+		btn.Flash, btn.PushedTexture, btn.CheckedTexture, btn.HighlightTexture,
+		btn.NewActionTexture, btn.Border,
+	}
+	local icon = SpellIcon(btn)
+	for i = 1, #regions do
+		local region = regions[i]
+		if region and region ~= icon and region.SetPoint then
+			region:ClearAllPoints()
+			region:SetPoint("TOPLEFT", btn, "TOPLEFT")
+			region:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT")
+		end
+	end
 end
 
 local function FitIcon(btn)
@@ -649,12 +744,20 @@ local function ButtonSpell(btn)
 	return nil
 end
 
+local FitAlert
+
 local function UpdateGlow(btn)
 	local overlayed = C_SpellActivationOverlay and C_SpellActivationOverlay.IsSpellOverlayed
 	local spell = ButtonSpell(btn)
 	local host = btn._soulGlow
 	if DB().procGlow == false or not overlayed or not spell then
 		if host then host:Hide() end
+		if btn.SpellActivationAlert then btn.SpellActivationAlert:SetAlpha(0) end
+		return
+	end
+	if btn.SpellActivationAlert then
+		if host then host:Hide() end
+		FitAlert(btn)
 		return
 	end
 	local ok, flag = pcall(overlayed, spell)
@@ -694,24 +797,32 @@ local function QueueGlows()
 end
 AB.QueueGlows = QueueGlows
 
+-- Blizzard's proc alert (the gold flipbook and the spinning ring) is drawn
+-- for a 45px button. Scale it to the button we actually sized.
+FitAlert = function(btn)
+	local alert = btn and btn.SpellActivationAlert
+	if not alert then return end
+	local size = btn._soulSize or 45
+	if size < 8 then size = 45 end
+	alert:SetScale(size / 45)
+	alert:ClearAllPoints()
+	alert:SetPoint("CENTER", btn, "CENTER", 0, 0)
+	alert:SetAlpha(DB().procGlow == false and 0 or 1)
+end
+
 local alertHooked = false
-local function SuppressBlizzardGlow()
+local function KeepBlizzardGlow()
 	if alertHooked then return end
 	alertHooked = true
 	local manager = _G.ActionButtonSpellAlertManager
 	if manager and manager.ShowAlert then
 		hooksecurefunc(manager, "ShowAlert", function(_, button)
-			if button and button._soulSize and button.SpellActivationAlert then
-				button.SpellActivationAlert:SetAlpha(0)
-			end
+			if button and button._soulSize then FitAlert(button) end
 		end)
 	end
 	if _G.ActionButton_ShowOverlayGlow then
 		hooksecurefunc("ActionButton_ShowOverlayGlow", function(button)
-			if button and button._soulSize then
-				local alert = button.SpellActivationAlert or button.overlay
-				if alert then alert:SetAlpha(0) end
-			end
+			if button and button._soulSize then FitAlert(button) end
 		end)
 	end
 end
@@ -737,24 +848,18 @@ local function Chrome(btn, size)
 		btn.chargeCooldown:SetAllPoints(icon or btn)
 	end
 	local r, g, b = Soul:Accent()
-	if not btn._soulFlat then
-		btn._soulFlat = true
-		Flat(btn.GetHighlightTexture and btn:GetHighlightTexture(), 1, 1, 1, 0.16)
-		Flat(btn.GetPushedTexture and btn:GetPushedTexture(), 1, 1, 1, 0.24)
+	Flat(btn.GetHighlightTexture and btn:GetHighlightTexture(), btn, 1, 1, 1, 0.16)
+	Flat(btn.GetPushedTexture and btn:GetPushedTexture(), btn, 1, 1, 1, 0.24)
+	Flat(btn.GetCheckedTexture and btn:GetCheckedTexture(), btn, r, g, b, 0.35)
+	FitPress(btn)
+	if btn.AutoCastOverlay then
+		btn.AutoCastOverlay:ClearAllPoints()
+		btn.AutoCastOverlay:SetPoint("TOPLEFT", btn, "TOPLEFT")
+		btn.AutoCastOverlay:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT")
 	end
-	Flat(btn.GetCheckedTexture and btn:GetCheckedTexture(), r, g, b, 0.35)
-	if btn.Flash then
-		btn.Flash:ClearAllPoints()
-		btn.Flash:SetAllPoints(btn)
-	end
-	if btn.Border then
-		btn.Border:ClearAllPoints()
-		btn.Border:SetAllPoints(btn)
-	end
-	if btn.AutoCastOverlay then btn.AutoCastOverlay:SetAllPoints(btn) end
 	local scale = size / 45
-	if btn.SpellActivationAlert then btn.SpellActivationAlert:SetAlpha(0) end
-	if btn._soulGlow then btn._soulGlow.cr = nil PaintGlow(btn) end
+	FitAlert(btn)
+	if btn._soulGlow then btn._soulGlow:Hide() end
 	if btn.TargetReticleAnimFrame then btn.TargetReticleAnimFrame:SetScale(scale) end
 	if btn.AssistedCombatRotationFrame then btn.AssistedCombatRotationFrame:SetScale(scale) end
 	Soul:ShowBorder(btn, DB().showBorder and true or false, 1)
@@ -765,6 +870,8 @@ local function Chrome(btn, size)
 			if InCombatLockdown() then return end
 			if self._soulSize then Chrome(self, self._soulSize) end
 		end)
+		btn:HookScript("OnMouseDown", function(self) FitPress(self) end)
+		btn:HookScript("OnMouseUp", function(self) FitPress(self) end)
 	end
 end
 
@@ -1004,7 +1111,7 @@ end
 
 function AB:OnEnable()
 	Park()
-	SuppressBlizzardGlow()
+	KeepBlizzardGlow()
 	for i = 1, #BARS do
 		if not CreateBar(BARS[i]) then return end
 	end

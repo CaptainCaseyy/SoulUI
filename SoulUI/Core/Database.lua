@@ -4,7 +4,7 @@ local Soul = SoulUI
 
 local THEME_DEFAULTS = {
 	accent = { r = 0, g = 0.93, b = 1 },
-	accentUseClass = false,
+	accentUseClass = true,
 	font = "SoulUI Barlow SemiBold",
 	fontOutline = "SHADOW",
 	statusbar = "SoulUI Smooth",
@@ -91,7 +91,7 @@ function Soul:InitDB()
 	if type(db._migrations) ~= "table" then db._migrations = {} end
 	if type(db.account) ~= "table" then db.account = {} end
 	if db.account.debug == nil then db.account.debug = false end
-	if db.account.panelScale == nil then db.account.panelScale = 1 end
+	if db.account.panelScale == nil then db.account.panelScale = 1.55 end
 
 	if type(db.profiles[db.activeProfile]) ~= "table" then
 		db.profiles[db.activeProfile] = self:NewProfileTable()

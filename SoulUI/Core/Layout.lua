@@ -17,7 +17,7 @@ local Soul = SoulUI
 -- The layout is written into the profile once per LAYOUT_VERSION. After that
 -- the profile is the user's: drags, resizes and editor changes are never
 -- overwritten again unless they press "Reset layout" (Soul:ResetLayout()).
-local LAYOUT_VERSION = 3
+local LAYOUT_VERSION = 4
 
 local function Round(value)
 	return Soul.Pixel:Scale(math.floor(value + 0.5))
@@ -32,151 +32,55 @@ local function Section(modules, key)
 	return modules[key]
 end
 
+-- Colton's live profile on 13 Nov 2026, captured from the Default profile.
+-- Reset layout and a brand-new profile both start here.
+local SNAPSHOT = {
+	{ key = "ActionBars:main", x = -3.75, y = -306 },
+	{ key = "ActionBars:bar2", x = -3.75, y = -376.5 },
+	{ key = "ActionBars:bar3", x = -940.5, y = 50.25 },
+	{ key = "ActionBars:bar4", x = -902.25, y = 50.25 },
+	{ key = "ActionBars:bar5", x = -863.25, y = 50.25 },
+	{ key = "ActionBars:bar6", x = -921.75, y = 588 },
+	{ key = "UnitFrames:player", x = -303, y = -208.5 },
+	{ key = "UnitFrames:target", x = 303, y = -208.5 },
+	{ key = "UnitFrames:focus", x = -282, y = -149.25 },
+	{ key = "UnitFrames:targettarget", x = 505.5, y = -236.25 },
+	{ key = "UnitFrames:pet", x = 545.25, y = -516 },
+	{ key = "UnitFrames:target:cast", x = -14.25, y = 63, point = "BOTTOM", relPoint = "TOP", relative = "UnitFrames:target" },
+	{ key = "ResourceBars:pips", x = 0, y = -244.5 },
+	{ key = "ResourceBars:cast", x = 1.5, y = -462 },
+	{ key = "ResourceBars:primary", x = -6, y = -501 },
+	{ key = "ResourceBars:gcd", x = 1.5, y = -494.25 },
+	{ key = "GroupFrames:party", x = -395.25, y = 87 },
+	{ key = "GroupFrames:raid", x = -476.25, y = 125.25 },
+	{ key = "DamageMeters:1", x = 810, y = -206.25 },
+	{ key = "DamageMeters:2", x = 809.25, y = -327.75 },
+	{ key = "DamageMeters:3", x = 817.5, y = -462 },
+	{ key = "Bags:main", x = -66.75, y = 0, point = "BOTTOMRIGHT", relPoint = "BOTTOMRIGHT" },
+	{ key = "Blizzard:EssentialCooldownViewer", x = -774, y = 415.5 },
+	{ key = "Blizzard:UtilityCooldownViewer", x = -774.75, y = 392.25 },
+	{ key = "Blizzard:BuffIconCooldownViewer", x = -699, y = 214.5 },
+	{ key = "Blizzard:BuffBarCooldownViewer", x = -724.5, y = 331.5 },
+}
+
 function Soul:BuildDefaultLayout(profile)
-	local W = UIParent:GetWidth()
-	local H = UIParent:GetHeight()
-	if type(W) ~= "number" or type(H) ~= "number" or W < 400 or H < 300 then return false end
-
 	profile.unlock = profile.unlock or {}
-	profile.unlock.positions = profile.unlock.positions or {}
+	profile.unlock.positions = {}
+	profile.unlock.editorAlpha = 0.24
 	local positions = profile.unlock.positions
-	local modules = profile.modules or {}
-	profile.modules = modules
-
-	local g = Soul.Pixel:Scale(1)
-	local B = math.floor(H * 0.0335 + 0.5)
-	if B < 34 then B = 34 elseif B > 50 then B = 50 end
-	local P = B + g
-
-	-- Action rows.
-	local row2Y = -H / 2 + H * 0.206 + B / 2
-	local row1Y = row2Y + P
-	local rowTop = row1Y + B / 2
-
-	-- Shards and the player/target pair.
-	local shardW = 6 * P - g
-	local shardH = Round(0.68 * P)
-	local base = rowTop + 2 * g
-	local shardY = base + shardH / 2
-	local barW = Round(4.67 * P)
-	local barH = Round(1.41 * P)
-	local playerX = -(3 * P + 0.7 * P) - barW / 2
-	local playerY = base + barH / 2
-
-	-- Pet and the tiny bar under it.
-	local petW = Round(1.9 * P)
-	local petH = Round(0.42 * P)
-	local petX = -6.15 * P - petW / 2
-	local petY = row2Y + B / 2 - petH / 2
-	local tiny = math.max(12, math.floor((petW - 5 * g) / 6))
-	local tinyH = tiny * 2 + g
-	local tinyY = petY - petH / 2 - 2 * g - tinyH / 2
-
-	-- Casts, focus, target of target.
-	local castH = Round(0.45 * P)
-	local castY = playerY + barH / 2 + 3 * g + castH / 2
-	local smallW = Round(2.9 * P)
-	local smallH = Round(0.7 * P)
-	local smallY = castY + castH / 2 + Round(0.7 * P) + smallH / 2
-
-	-- Left edge columns.
-	local col = Round(0.77 * P)
-	local leftX = -W / 2 + Round(0.2 * P) + col / 2
-
-	-- Party column right of the left bar columns (vertical by default), raid
-	-- top left.
-	local partyX, partyY, partyW, partyH = Soul:DefaultPartySpot(W, H, P, g, col)
-	local raidW = Round(1.9 * P)
-	local raidH = Round(1.0 * P)
-
-	-- Meters on the right edge.
-	local meterW = Round(5.6 * P)
-	local rowH = math.max(14, Round(0.42 * P))
-	local meterRows = 6
-	local block = 22 + meterRows * rowH + 8 + Round(0.3 * P)
-	local meterX = W / 2 - Round(0.2 * P) - meterW / 2
-	local meterTop = Round(1.5 * P)
-
-	local units = Section(Section(modules, "UnitFrames"), "units")
-	local function Unit(name, x, y, w, h, extra)
-		local cfg = Section(units, name)
-		cfg.x, cfg.y, cfg.width, cfg.height = Soul.Pixel:Scale(x), Soul.Pixel:Scale(y), w, h
-		if extra then for k, v in pairs(extra) do cfg[k] = v end end
-		Pos(positions, "UnitFrames:" .. name, x, y)
+	for i = 1, #SNAPSHOT do
+		local spot = SNAPSHOT[i]
+		positions[spot.key] = {
+			point = spot.point or "CENTER",
+			relPoint = spot.relPoint or "CENTER",
+			relative = spot.relative,
+			x = spot.x,
+			y = spot.y,
+		}
 	end
-	Unit("player", playerX, playerY, barW, barH, { showPower = false, showCast = false })
-	Unit("target", -playerX, playerY, barW, barH, { showPower = false, showCast = true, castHeight = castH, castWidth = barW })
-	Unit("pet", petX, petY, petW, petH, { showPower = false, showCast = false, namePosition = "above", healthFormat = "none" })
-	Unit("focus", playerX - (barW - smallW) / 2, smallY, smallW, smallH, { showPower = false, showCast = true, castHeight = castH, castWidth = smallW })
-	Unit("targettarget", -playerX + (barW - smallW) / 2, smallY, smallW, smallH, { showPower = false, showCast = false })
-	-- Cast bars hang above their frame through a relative anchor; drop any
-	-- stale absolute spot so they follow the frame again.
-	positions["UnitFrames:target:cast"] = nil
-	positions["UnitFrames:focus:cast"] = nil
-	positions["UnitFrames:player:cast"] = nil
-
-	local resources = Section(modules, "ResourceBars")
-	local pips = Section(resources, "pips")
-	pips.x, pips.y, pips.width, pips.height = 0, Soul.Pixel:Scale(shardY), shardW, shardH
-	pips.gap = 2
-	pips.colorMode = pips.colorMode or "class"
-	Pos(positions, "ResourceBars:pips", 0, shardY)
-	local cast = Section(resources, "cast")
-	cast.x, cast.y, cast.width, cast.height = Soul.Pixel:Scale(playerX), Soul.Pixel:Scale(castY), barW, castH
-	Pos(positions, "ResourceBars:cast", playerX, castY)
-	local primary = Section(resources, "primary")
-	local primaryY = row2Y - B / 2 - 3 * g - 5
-	primary.x, primary.y, primary.width, primary.height = 0, Soul.Pixel:Scale(primaryY), shardW, 10
-	Pos(positions, "ResourceBars:primary", 0, primaryY)
-	local gcd = Section(resources, "gcd")
-	local gcdY = row2Y - B / 2 - 2 * g - 2
-	gcd.x, gcd.y, gcd.width, gcd.height = 0, Soul.Pixel:Scale(gcdY), 12 * P - g, 3
-	Pos(positions, "ResourceBars:gcd", 0, gcdY)
-	resources.showPips = true
-	resources.showCast = true
-
-	local bars = Section(Section(modules, "ActionBars"), "bars")
-	local function Bar(key, x, y, settings)
-		local cfg = Section(bars, key)
-		for k, v in pairs(settings) do cfg[k] = v end
-		cfg.x, cfg.y = Soul.Pixel:Scale(x), Soul.Pixel:Scale(y)
-		Pos(positions, "ActionBars:" .. key, x, y)
-	end
-	Bar("main", 0, row1Y, { enabled = true, size = B, spacing = 1, buttons = 12, rows = 1, vertical = false, fade = false })
-	Bar("bar2", 0, row2Y, { enabled = true, size = B, spacing = 1, buttons = 12, rows = 1, vertical = false, fade = false })
-	local colY = Round(0.7 * P)
-	Bar("bar3", leftX, colY, { enabled = true, size = col, spacing = 1, buttons = 12, rows = 1, vertical = true, fade = false })
-	Bar("bar4", leftX + col + g, colY, { enabled = true, size = col, spacing = 1, buttons = 12, rows = 1, vertical = true, fade = false })
-	Bar("bar5", leftX + 2 * (col + g), colY, { enabled = true, size = col, spacing = 1, buttons = 12, rows = 1, vertical = true, fade = false })
-	Bar("bar6", petX - petW / 2 + (6 * tiny + 5 * g) / 2, tinyY, { enabled = true, size = tiny, spacing = 1, buttons = 12, rows = 2, vertical = false, fade = false })
-
-	local group = Section(modules, "GroupFrames")
-	local party = Section(group, "party")
-	party.width, party.height, party.spacing, party.showPower = partyW, partyH, 1, false
-	party.orientation = "vertical"
-	party.x, party.y = Soul.Pixel:Scale(partyX), Soul.Pixel:Scale(partyY)
-	Pos(positions, "GroupFrames:party", partyX, partyY)
-	profile._partyVertical = true
-	local raid = Section(group, "raid")
-	raid.width, raid.height, raid.spacing, raid.showPower = raidW, raidH, 1, false
-	local raidX = -W / 2 + Round(0.6 * P) + (raidW * 5 + g * 4) / 2
-	local raidY = H / 2 - Round(2.65 * P) - (raidH * 8 + g * 7) / 2
-	raid.x, raid.y = Soul.Pixel:Scale(raidX), Soul.Pixel:Scale(raidY)
-	Pos(positions, "GroupFrames:raid", raidX, raidY)
-
-	local meters = Section(modules, "DamageMeters")
-	meters.width, meters.rows, meters.rowHeight = meterW, meterRows, rowH
-	local windows = Section(meters, "windows")
-	for i = 1, 3 do
-		local window = Section(windows, i)
-		local frameH = 22 + meterRows * rowH + 8
-		local y = meterTop - (i - 1) * block - frameH / 2
-		window.x, window.y = Soul.Pixel:Scale(meterX), Soul.Pixel:Scale(y)
-		Pos(positions, "DamageMeters:" .. i, meterX, y)
-	end
-
 	profile._layoutVersion = LAYOUT_VERSION
-	profile._layoutSize = { W, H }
+	profile._layoutSize = { 1920, 1200 }
+	profile._partyVertical = true
 	profile._singleCast = true
 	return true
 end

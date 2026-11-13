@@ -91,6 +91,7 @@ local function PlaceInMenu(menu)
 	if menuBottom and buttonBottom and buttonBottom < menuBottom + 10 then
 		menu:SetHeight((menu:GetHeight() or 0) + (menuBottom + 10 - buttonBottom) + 8)
 	end
+	if Soul.ClampToScreen then Soul:ClampToScreen(menu) end
 	menu._soulPlacing = false
 end
 

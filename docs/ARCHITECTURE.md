@@ -29,6 +29,8 @@ SoulUI_GroupFrames/      party and raid headers
 SoulUI_ActionBars/       main bar and the extra bars
 SoulUI_ResourceBars/     primary power, class pips, cast, GCD
 SoulUI_DamageMeters/     C_DamageMeter windows
+SoulUI_Bags/             bags (combined, per bag, list), bank, pins, alts, gold
+SoulUI_QoL/              helpers, raid tools, skins for tracker, minimap and chat
 SoulUI_Options/          LoadOnDemand editor
 ```
 

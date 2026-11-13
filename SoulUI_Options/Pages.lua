@@ -20,6 +20,8 @@ local MODULES = {
 	{ addon = "SoulUI_ActionBars", label = "Action Bars" },
 	{ addon = "SoulUI_ResourceBars", label = "Resources" },
 	{ addon = "SoulUI_DamageMeters", label = "Damage Meters" },
+	{ addon = "SoulUI_Bags", label = "Bags" },
+	{ addon = "SoulUI_QoL", label = "Quality of Life" },
 }
 
 -- Re-applies every module (fonts and textures are read at Apply time).
@@ -197,6 +199,9 @@ local GROUPS = {
 	{ prefix = "ActionBars", title = "Action Bars" },
 	{ prefix = "GroupFrames", title = "Party and Raid" },
 	{ prefix = "DamageMeters", title = "Damage Meters" },
+	{ prefix = "Nameplates", title = "Nameplates" },
+	{ prefix = "Bags", title = "Bags" },
+	{ prefix = "QoL", title = "Quality of Life" },
 	{ prefix = "Blizzard", title = "Blizzard Cooldown Manager" },
 }
 

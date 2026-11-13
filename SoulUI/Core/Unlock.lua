@@ -114,6 +114,7 @@ function Soul:Place(frame, key, fallback)
 		if not ratio or ratio <= 0 then ratio = 1 end
 		frame:ClearAllPoints()
 		frame:SetPoint(pos.point or "CENTER", relative, pos.relPoint or "CENTER", (pos.x or 0) / ratio, (pos.y or 0) / ratio)
+		Soul:ClampToScreen(frame)
 	end
 	if InCombatLockdown() and frame.IsProtected and frame:IsProtected() then
 		self:RunAfterCombat("place:" .. key, apply)
@@ -135,6 +136,76 @@ local function RectOf(frame)
 	if not left or not width then return nil end
 	local ratio = frame:GetEffectiveScale() / UIParent:GetEffectiveScale()
 	return left * ratio, bottom * ratio, width * ratio, height * ratio
+end
+
+local function AnchorOffset(which, origin, size)
+	if not which then return origin + size / 2 end
+	if which:find("LEFT") then return origin end
+	if which:find("RIGHT") then return origin + size end
+	return origin + size / 2
+end
+
+local function AnchorOffsetY(which, origin, size)
+	if not which then return origin + size / 2 end
+	if which:find("BOTTOM") then return origin end
+	if which:find("TOP") then return origin + size end
+	return origin + size / 2
+end
+
+-- Pull a frame back inside the window. Uses the anchor and the size we
+-- set, not GetRect, which stays stale for a frame whose scale is not the
+-- parent's. The saved position is not rewritten.
+function Soul:ClampToScreen(frame)
+	if not frame or not frame.GetPoint or not frame.GetWidth then return end
+	if InCombatLockdown() and frame.IsProtected and frame:IsProtected() then return end
+	local point, rel, relPoint, x, y = frame:GetPoint(1)
+	if not point or not rel or not rel.GetWidth then return end
+	local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
+	if type(sw) ~= "number" or sw < 200 or type(sh) ~= "number" or sh < 200 then return end
+	local ratio = frame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+	if not ratio or ratio <= 0 then ratio = 1 end
+	local w = (frame:GetWidth() or 0) * ratio
+	local h = (frame:GetHeight() or 0) * ratio
+	if w < 1 or h < 1 then return end
+	local parentLeft, parentBottom, parentW, parentH
+	if rel == UIParent then
+		parentLeft, parentBottom, parentW, parentH = 0, 0, sw, sh
+	else
+		parentLeft, parentBottom, parentW, parentH = RectOf(rel)
+		if not parentLeft or not parentW then return end
+	end
+	local ax = AnchorOffset(relPoint, parentLeft, parentW) + (x or 0) * ratio
+	local ay = AnchorOffsetY(relPoint, parentBottom, parentH) + (y or 0) * ratio
+	local fx = point:find("LEFT") and 0 or (point:find("RIGHT") and 1 or 0.5)
+	local fy = point:find("BOTTOM") and 0 or (point:find("TOP") and 1 or 0.5)
+	local left = ax - fx * w
+	local bottom = ay - fy * h
+	local margin = 8
+	local dx, dy = 0, 0
+	-- Keep the left and the bottom inside first. A bar taller than the
+	-- window stays reachable from the corner instead of sliding off it.
+	if left < margin then dx = margin - left end
+	if left + w + dx > sw - margin then
+		local pulled = (sw - margin) - (left + w)
+		if left + pulled >= margin then dx = pulled end
+	end
+	if bottom < margin then dy = margin - bottom end
+	if bottom + h + dy > sh - margin then
+		local pulled = (sh - margin) - (bottom + h)
+		if bottom + pulled >= margin then dy = pulled end
+	end
+	if dx == 0 and dy == 0 then return end
+	frame:ClearAllPoints()
+	frame:SetPoint(point, rel, relPoint, (x or 0) + dx / ratio, (y or 0) + dy / ratio)
+end
+
+function Soul:ClampAll()
+	local movers = self._movers
+	if type(movers) ~= "table" then return end
+	for _, element in pairs(movers) do
+		local frame = element.getFrame and element.getFrame()
+		if frame then self:ClampToScreen(frame) end
+	end
 end
 
 local function PointOn(frame, point)
@@ -180,6 +251,13 @@ local function FitMover(mover, frame)
 		local element = mover.element
 		local pos = SavedPos(element)
 		mover:SetPoint(pos.point or "CENTER", RelativeFrame(pos, frame, element and element.key), pos.relPoint or "CENTER", pos.x or 0, pos.y or 0)
+		mover:SetSize(150, 26)
+		return
+	end
+	-- A full window (the bags) must not cover edit mode. A small tag still
+	-- marks where it sits so it can be dragged.
+	if mover.element and mover.element.compact then
+		mover:SetPoint("CENTER", frame, "CENTER")
 		mover:SetSize(150, 26)
 		return
 	end
@@ -713,8 +791,10 @@ end
 
 local function EnsureToolbar()
 	if toolbar then return toolbar end
-	toolbar = UI.Window("SoulUI_EditToolbar", "SoulUI  Edit Mode", 980, 92, { strata = "TOOLTIP", noClose = true })
-	toolbar:SetFrameLevel(50)
+	toolbar = UI.Window("SoulUI_EditToolbar", "SoulUI  Edit Mode", 980, 92, {
+		strata = "FULLSCREEN_DIALOG", toplevel = false, noClose = true,
+	})
+	toolbar:SetFrameLevel(520)
 
 	local hint = UI.Text(toolbar.bar, 11, UI.C.dim, "RIGHT")
 	hint:SetPoint("RIGHT", -14, 0)
@@ -807,10 +887,11 @@ end
 local function EnsureInspector()
 	if inspector then return inspector end
 	inspector = UI.Window("SoulUI_EditInspector", "Element", 300, 500, {
-		strata = "TOOLTIP",
+		strata = "FULLSCREEN_DIALOG",
+		toplevel = false,
 		onClose = function() Select(nil) end,
 	})
-	inspector:SetFrameLevel(60)
+	inspector:SetFrameLevel(500)
 	local body = CreateFrame("Frame", nil, inspector)
 	body:SetPoint("TOPLEFT", 16, -52)
 	body:SetPoint("BOTTOMRIGHT", -16, 14)

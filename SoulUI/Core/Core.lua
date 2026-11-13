@@ -3,7 +3,7 @@ if SoulUI_Blocked then return end
 SoulUI = SoulUI or {}
 local Soul = SoulUI
 
-Soul.version = "0.9.0"
+Soul.version = "0.9.14"
 Soul.modules = {}
 Soul.optionPages = {}
 Soul._callbacks = {}
@@ -284,6 +284,11 @@ core:SetScript("OnEvent", function(_, event, arg1)
 			Soul:EnableModules()
 			Soul:ApplySpecProfile()
 			Soul:Fire("Ready")
+			if Soul.ClampAll then
+				Soul:ClampAll()
+				C_Timer.After(0.2, function() if Soul.ClampAll then Soul:ClampAll() end end)
+				C_Timer.After(1, function() if Soul.ClampAll then Soul:ClampAll() end end)
+			end
 		end
 		Start()
 		if Soul.db and Soul.db.account and not Soul.db.account.welcomed then

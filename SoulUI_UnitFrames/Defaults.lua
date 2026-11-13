@@ -40,6 +40,11 @@ SoulUI.Defaults.UnitFrames = {
 	gloss = true,             -- soft vertical shading on the health fill
 	textShadow = true,        -- drop shadow under name and health text (on top of the outline)
 	absorbs = true,           -- shield overlay past the health fill, and over-shield inside it
+	shieldPlacement = "wash",
+	shieldPattern = "striped",
+	shieldColor = { 1, 1, 1 },
+	shieldAlpha = 1,
+	overflowAlpha = 1,
 	healAbsorbs = true,       -- heal-absorb (necrotic etc.) overlay eating into the fill
 	hoverHighlight = true,    -- brighten the frame under the mouse
 	targetHighlight = true,   -- white outline on a frame whose unit is your current target
@@ -49,10 +54,10 @@ SoulUI.Defaults.UnitFrames = {
 	combatIcon = true,        -- crossed swords on the player frame while in combat
 
 	units = {
-		player = Unit(225, 68, -400, -300, { showCast = false }),
-		target = Unit(225, 68, 400, -300),
-		focus = Unit(140, 34, -400, -200),
-		targettarget = Unit(140, 34, 400, -200, { showCast = false }),
-		pet = Unit(92, 20, -400, -360, { showCast = false, namePosition = "above", healthFormat = "none" }),
+		player = Unit(254, 101, -303, -208.5, { showCast = false, nameSize = 20 }),
+		target = Unit(254, 101, 303, -208.5, { castHeight = 80, castWidth = 210, color = { 1, 1, 1 } }),
+		focus = Unit(118, 29, -282, -149.25, { castHeight = 18, castWidth = 118 }),
+		targettarget = Unit(118, 29, 505.5, -236.25, { showCast = false }),
+		pet = Unit(94, 31, 545.25, -516, { showCast = false, namePosition = "above", healthFormat = "none" }),
 	},
 }

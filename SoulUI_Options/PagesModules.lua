@@ -239,23 +239,23 @@ local function BuildUnitFrames(col)
 			{ value = "striped", label = "Striped" },
 			{ value = "bar", label = "Bar texture" },
 		},
-		get = function() return UF().shieldPattern or "solid" end,
+		get = function() return UF().shieldPattern or "striped" end,
 		set = function(v) UF().shieldPattern = v ApplyUF() end,
 	})
 	W.Row2(col, {
 		type = "slider", label = "Shield opacity", min = 0.05, max = 1, step = 0.05, disabled = shieldOff,
 		tooltip = "The shield drawn past the end of your health.",
-		get = function() return UF().shieldAlpha or 0.5 end,
+		get = function() return UF().shieldAlpha or 0.9 end,
 		set = function(v) UF().shieldAlpha = v ApplyUF() end,
 	}, {
 		type = "slider", label = "Overflow opacity", min = 0.05, max = 1, step = 0.05, disabled = shieldOff,
 		tooltip = "Shield that does not fit past your health, laid back over the bar from the right end (the pale band).",
-		get = function() return UF().overflowAlpha or 0.22 end,
+		get = function() return UF().overflowAlpha or 0.75 end,
 		set = function(v) UF().overflowAlpha = v ApplyUF() end,
 	})
 	W.Row(col, {
 		type = "color", label = "Shield color", disabled = shieldOff,
-		get = W.ColorGet(UF, "shieldColor", 0.6, 0.85, 1),
+		get = W.ColorGet(UF, "shieldColor", 1, 1, 1),
 		set = W.ColorSet(UF, "shieldColor", ApplyUF),
 	})
 	W.Row2(col, UFToggle("hoverHighlight", "Brighten on mouseover"), UFToggle("targetHighlight", "Outline your target", "A white outline on focus, target of target or pet when that unit is your target."))
@@ -730,7 +730,7 @@ local function BuildBarStyle(col)
 		get = function() return AB().hotkeySize or 0 end,
 		set = function(v) AB().hotkeySize = v ApplyAB() end,
 	}, {
-		type = "slider", label = "Stacks and charges", min = 0, max = 32, step = 1,
+		type = "slider", label = "Stacks and charges", min = 0, max = 48, step = 1,
 		get = function() return AB().countSize or 0 end,
 		set = function(v) AB().countSize = v ApplyAB() end,
 	})
@@ -757,9 +757,16 @@ local function BuildBarStyle(col)
 		get = W.ColorGet(AB, "countColor", 1, 1, 1),
 		set = W.ColorSet(AB, "countColor", ApplyAB),
 	})
+	W.Row(col, {
+		type = "slider", label = "Stack brightness", min = 0.4, max = 1, step = 0.05,
+		tooltip = "How solid the stack number is. 1 is fully bright.",
+		get = function() return AB().countBright or 1 end,
+		set = function(v) AB().countBright = v ApplyAB() end,
+	})
 	W.Section(col, "Proc glow")
 	W.Row2(col, {
-		type = "toggle", label = "Glow when a proc lights a spell",
+		type = "toggle", label = "Blizzard proc glow",
+		tooltip = "The stock gold burst and spinning ring, scaled to the button.",
 		get = function() return AB().procGlow ~= false end,
 		set = function(v) AB().procGlow = Bool(v) ApplyAB() end,
 	}, {

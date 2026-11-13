@@ -466,7 +466,7 @@ function UI.Window(name, title, width, height, opts)
 	local frame = CreateFrame("Frame", name, UIParent)
 	frame:SetSize(width, height)
 	frame:SetFrameStrata(opts.strata or "DIALOG")
-	frame:SetToplevel(true)
+	frame:SetToplevel(opts.toplevel ~= false)
 	frame:SetClampedToScreen(true)
 	frame:SetClampRectInsets(width - 80, -(width - 80), 0, height - 40)
 	frame:EnableMouse(true)
@@ -524,6 +524,7 @@ function UI.Window(name, title, width, height, opts)
 		else
 			self:SetPoint(defaultPoint or "CENTER", UIParent, defaultPoint or "CENTER", defaultX or 0, defaultY or 0)
 		end
+		if Soul.ClampToScreen then Soul:ClampToScreen(self) end
 	end
 
 	return frame
@@ -861,6 +862,10 @@ function UI.OpenMenu(anchor, items, current, onPick, width)
 		end
 	end
 	frame:SetScale(anchor:GetEffectiveScale() / UIParent:GetEffectiveScale())
+	frame:SetFrameStrata("TOOLTIP")
+	frame:SetFrameLevel(1000)
+	catcher:SetFrameStrata("TOOLTIP")
+	catcher:SetFrameLevel(900)
 	frame:SetWidth(width or math.max(160, anchor:GetWidth()))
 	frame:SetHeight(math.min(#items, MENU_MAX) * MENU_ROW + 8)
 	frame:ClearAllPoints()
@@ -875,8 +880,17 @@ function UI.OpenMenu(anchor, items, current, onPick, width)
 	catcher:Show()
 	frame:Show()
 	UI.FadeIn(frame, 0.12)
+	-- The element panel is toplevel and raises itself on the click that
+	-- opened this list. Put the list back above it on the next frame.
 	catcher:Raise()
 	frame:Raise()
+	C_Timer.After(0, function()
+		if not frame:IsShown() then return end
+		frame:SetFrameStrata("TOOLTIP")
+		frame:SetFrameLevel(1000)
+		catcher:SetFrameLevel(900)
+		frame:Raise()
+	end)
 end
 
 -- Dropdown button. items may be a table or a function returning one.
@@ -1023,14 +1037,25 @@ function UI.Swatch(parent, get, set, hasAlpha)
 	button:SetScript("OnClick", function(self)
 		if self._disabled then return end
 		local r, g, b, a = get()
-		local changed = false
+		local canceled = false
 		local function Apply()
-			changed = true
+			if canceled then return end
 			local nr, ng, nb = ColorPickerFrame:GetColorRGB()
-			local na = hasAlpha and ColorPickerFrame.GetColorAlpha and ColorPickerFrame:GetColorAlpha() or a
+			if type(nr) ~= "number" or type(ng) ~= "number" or type(nb) ~= "number" then return end
+			local na = a
+			if hasAlpha and ColorPickerFrame.GetColorAlpha then na = ColorPickerFrame:GetColorAlpha() end
 			set(nr, ng, nb, na)
 			Refresh()
 		end
+		if not ColorPickerFrame._soulCommit then
+			ColorPickerFrame._soulCommit = true
+			ColorPickerFrame:HookScript("OnHide", function()
+				local fn = ColorPickerFrame._soulApply
+				ColorPickerFrame._soulApply = nil
+				if fn then fn() end
+			end)
+		end
+		ColorPickerFrame._soulApply = Apply
 		local info = {
 			r = r or 1, g = g or 1, b = b or 1,
 			opacity = a or 1,
@@ -1038,10 +1063,10 @@ function UI.Swatch(parent, get, set, hasAlpha)
 			swatchFunc = Apply,
 			opacityFunc = Apply,
 			cancelFunc = function()
-				if changed then
-					set(r, g, b, a)
-					Refresh()
-				end
+				canceled = true
+				ColorPickerFrame._soulApply = nil
+				set(r, g, b, a)
+				Refresh()
 			end,
 		}
 		if ColorPickerFrame.SetupColorPickerAndShow then
