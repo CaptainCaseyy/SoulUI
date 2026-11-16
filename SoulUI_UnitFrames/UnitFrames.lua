@@ -903,6 +903,23 @@ function UF:Layout(unit)
 			relative = "UnitFrames:" .. unit,
 		})
 		RegisterUnitWatch(frame)
+		-- Edit mode with no such unit (no target, no focus): show a sample
+		-- frame so it can be placed and sized by sight. Layout runs out of
+		-- combat, so pausing the unit watch here is safe; closing edit mode
+		-- lays out again and the watch takes over.
+		if frame._soulPreview and not UnitExists(frame._soulUnit or unit) then
+			UnregisterUnitWatch(frame)
+			frame:Show()
+			frame.Health:SetMinMaxValues(0, 1)
+			frame.Health:SetValue(0.78)
+			frame.Health:SetStatusBarColor(0.45, 0.45, 0.5)
+			if frame.Power then
+				frame.Power:SetMinMaxValues(0, 1)
+				frame.Power:SetValue(0.6)
+			end
+			frame.Name:SetText(LABELS[unit] or unit)
+			frame.HealthText:SetText("78%")
+		end
 		if frame._soulPreviewCast and live.showCast then
 			frame.Cast:SetPreview(true)
 			return
@@ -999,6 +1016,10 @@ function UF:OnEnable()
 				DB().units[unitKey].color = { r, g, b }
 				local live = UF.frames[unitKey]
 				if live and live:IsShown() then UpdateHealth(live) end
+			end,
+			onEdit = function(on)
+				frame._soulPreview = on and true or false
+				UF:Layout(unitKey)
 			end,
 		})
 		Soul:RegisterMover({

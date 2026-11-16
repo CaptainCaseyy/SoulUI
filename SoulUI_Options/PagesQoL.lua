@@ -115,7 +115,7 @@ local function BuildGroup(col)
 	W.Row2(col,
 		Toggle("Accept summons", "acceptSummon", "Accepts a summon (warlock or meeting stone) right away, unless you are in combat."),
 		Toggle("Accept resurrection", "acceptRes", "Accepts a resurrection, unless a boss fight is on or the caster is still in combat."))
-	W.Row(col, Toggle("Also during combat", "acceptResCombat", "Accepts a resurrection while you are still in combat.", Off("acceptRes")))
+	W.Row(col, Toggle("Accept resurrection in combat", "acceptResCombat", "Accepts a resurrection while you are still in combat.", Off("acceptRes")))
 	W.Section(col, "Battlegrounds and resets")
 	W.Row2(col,
 		Toggle("Release in battlegrounds", "releaseBG", "Releases your spirit after you die in a battleground, unless a soulstone or similar self-resurrection is offered."),

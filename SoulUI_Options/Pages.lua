@@ -342,7 +342,7 @@ end
 local function BuildProfiles(col)
 	W.Note(col, "A profile holds every setting and every frame position. Profiles are shared by all characters on this account. Export strings start with !SOUL1: and carry the whole profile.")
 	W.Section(col, "Profiles")
-	W.List(col, 10, function(rows)
+	W.List(col, 6, function(rows)
 		local names = ProfileNames()
 		for i = 1, #rows do
 			local row = rows[i]
@@ -372,6 +372,9 @@ local function BuildProfiles(col)
 					Soul.Options.Refresh()
 				end, "accent")
 				row.use:SetPoint("RIGHT", row.copy, "LEFT", -6, 0)
+				row.hint = UI.Text(row, 13, UI.C.faint)
+				row.hint:SetPoint("LEFT", 20, 0)
+				row.hint:SetText("Copy a profile to try changes safely, or create a new one below.")
 			end
 			row.name = name
 			if name then
@@ -383,6 +386,17 @@ local function BuildProfiles(col)
 				row.use:SetShown(not active)
 				row.delete:SetShown(not active)
 				row.copy:Show()
+				row.text:Show()
+				row.hint:Hide()
+				row:Show()
+			elseif i == #names + 1 then
+				-- The first free row explains the empty space under the list.
+				row.text:Hide()
+				row.tag:SetText("")
+				row.use:Hide()
+				row.delete:Hide()
+				row.copy:Hide()
+				row.hint:Show()
 				row:Show()
 			else
 				row:Hide()

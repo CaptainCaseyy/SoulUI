@@ -713,7 +713,9 @@ function UI.NumberBox(parent, width, get, set, step)
 	local function Show()
 		local value = get()
 		if type(value) ~= "number" then box:SetText("") return end
-		if math.abs(value - math.floor(value + 0.5)) < 0.01 then
+		-- Whole-step controls (pixels) show whole numbers even when the
+		-- stored value was scaled to another screen size (243.75).
+		if (step or 1) >= 1 or math.abs(value - math.floor(value + 0.5)) < 0.01 then
 			box:SetText(string.format("%d", math.floor(value + 0.5)))
 		else
 			box:SetText(string.format("%.2f", value))
@@ -1041,6 +1043,8 @@ function UI.Slider(parent, width, minValue, maxValue, step, get, set)
 	function slider:SetDisabled(off)
 		self._disabled = off and true or false
 		self:EnableMouse(not self._disabled)
+		-- A dimmed slider must not swallow the wheel: the page scrolls.
+		self:EnableMouseWheel(not self._disabled)
 		Refresh()
 	end
 	Refresh()

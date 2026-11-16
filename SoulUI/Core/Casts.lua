@@ -209,7 +209,9 @@ function Cast.Decorate(host, bar)
 	stunHolder:SetAllPoints(bar)
 	stunHolder:SetAlpha(0)
 	local badge = CreateFrame("Frame", nil, stunHolder)
-	badge:SetPoint("LEFT", bar, "LEFT", 4, 0)
+	-- A tab on the bar's top edge, not inside it: inside it covered the
+	-- spell name, and its visibility is secret so the name cannot move aside.
+	badge:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 2, 1)
 	badge:SetSize(38, 14)
 	badge:SetAlpha(0)
 	local badgeBg = badge:CreateTexture(nil, "BACKGROUND")
@@ -299,8 +301,9 @@ function Cast.Size(host, height)
 	if not deco then return end
 	local h = math.max(8, height or 14)
 	deco.lockIcon:SetSize(h, h)
-	deco.badge:SetSize(math.max(28, h * 2.6), h)
-	Soul:ApplyFont(deco.badgeText, math.max(8, math.floor(h * 0.7)), "OUTLINE")
+	local tab = math.max(11, math.floor(h * 0.7))
+	deco.badge:SetSize(math.max(30, tab * 2.8), tab)
+	Soul:ApplyFont(deco.badgeText, math.max(8, tab - 3), "OUTLINE")
 end
 
 -- Cast sample for edit mode / previews.

@@ -414,6 +414,10 @@ function P.Group(kind)
 		local classes = { "PALADIN", "WARRIOR", "WARLOCK", "DRUID", "ROGUE" }
 		for i = 1, 10 do
 			local bar = Bar(stage)
+			-- Dark track behind the missing health, like the real frames.
+			local track = bar:CreateTexture(nil, "BACKGROUND")
+			track:SetAllPoints()
+			track:SetColorTexture(0.07, 0.07, 0.08, 0.92)
 			local name = bar:CreateFontString(nil, "OVERLAY")
 			name:SetPoint("LEFT", 4, 0)
 			cells[i] = { bar = bar, name = name }
@@ -422,8 +426,10 @@ function P.Group(kind)
 			local cfg = Soul:ModuleDB("GroupFrames")[kind]
 			if type(cfg) ~= "table" then return end
 			local w, h, gap = cfg.width or 100, cfg.height or 40, cfg.spacing or 2
-			local count = kind == "party" and 5 or 10
+			-- Three party members are enough to judge size and spacing, and
+			-- keep the preview near real size (five shrank the names away).
 			local vertical = kind == "party" and cfg.orientation ~= "horizontal"
+			local count = kind == "party" and (vertical and 3 or 5) or 10
 			local cols = vertical and 1 or 5
 			local rows = math.ceil(count / cols)
 			local sw, sh = cols * w + (cols - 1) * gap, rows * h + (rows - 1) * gap

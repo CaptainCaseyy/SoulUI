@@ -2,6 +2,32 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-16 — laptop — 0.9.22 full settings and edit-mode pass
+
+Every settings page and tab, and edit mode, were opened in game. Fixes:
+
+**Edit mode (`UnitFrames.lua`).** With no target or focus, the Target, Target of Target and Focus movers were empty boxes. The frame mover now has `onEdit`: in edit mode, `Layout` pauses the unit watch, shows the frame and fills a sample (78%, unit label). Closing edit mode lays out again and the watch takes over. Checked: the samples show; Cancel hides them; Tab-targeting shows the real target frame.
+
+**STUN badge (`Casts.lua`).** It sat inside the bar and covered the spell name. Its visibility is secret, so the name cannot move aside; it is now a small tab on the bar's top-left edge. Checked in the Casts preview.
+
+**Slider rows (`Widgets.lua`, `UIKit.lua`).** The whole half-row took the mouse wheel, so scrolling a page over a slider row changed that setting instead, and a dimmed slider swallowed the wheel. Now only the slider bar and its number box take the wheel, and not while dimmed.
+
+**Number boxes (`UIKit.lua`).** Whole-step boxes show whole numbers. A size fitted to another screen showed "243.75".
+
+**Profiles (`Pages.lua`).** The list reserved 10 rows, so a single profile left a large empty box. It now has 6 rows, and the first free row explains copying or creating a profile.
+
+**Party preview (`Previews.lua`).**
+- Three members instead of five, so the preview is near real size and the names can be read.
+- A dark track now shows behind the missing health.
+
+**Quality of Life > Group.** "Also during combat" sat under "Accept summons" but belongs to resurrection. It is now "Accept resurrection in combat".
+
+**Checked and fine:** the General, Unit Frames, Nameplates, Action Bars, Resources (all tabs), Meters, Bags (all tabs) and QoL (all nine tabs) pages.
+
+**Not checked:**
+- Party frames in a real group.
+- Nameplate cast click on a real caster.
+
 ## 2026-11-16 — laptop — 0.9.21 in-game pass: tooltips, meter text, subtitles
 
 **Checked at the training dummies.** The 0.9.20 cast fill now covers the whole action button.

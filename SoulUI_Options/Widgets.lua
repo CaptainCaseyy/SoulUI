@@ -229,12 +229,9 @@ local function Control(col, host, spec)
 			box.Refresh()
 		end)
 		slider:SetPoint("RIGHT", box, "LEFT", -14, 0)
-		host:EnableMouse(true)
-		host:EnableMouseWheel(true)
-		host:SetScript("OnMouseWheel", function(_, delta)
-			local wheel = slider:GetScript("OnMouseWheel")
-			if wheel then wheel(slider, delta) end
-		end)
+		-- Only the slider bar and its box take the wheel. The whole row used
+		-- to, so scrolling the page over a slider row changed the setting
+		-- (or stalled on a dimmed one) instead of scrolling.
 		control = slider
 		control.box = box
 		refresh = function()
@@ -245,6 +242,7 @@ local function Control(col, host, spec)
 		function control:SetDisabled(off)
 			base(self, off)
 			box:SetEnabled(not off)
+			box:EnableMouseWheel(not off)
 			box:SetAlpha(off and 0.4 or 1)
 		end
 	elseif kind == "dropdown" or kind == "font" or kind == "statusbar" then
