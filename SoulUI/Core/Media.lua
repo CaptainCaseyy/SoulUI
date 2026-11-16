@@ -43,6 +43,11 @@ function Soul:ApplyFont(fontString, size, flags)
 	local style = theme and theme.fontOutline or "SHADOW"
 	local outline = flags or style
 	if flags == "OUTLINE" then outline = style end
+	-- "BRIGHT": text on a colored bar (nameplate name, enemy cast). No
+	-- outline (the owner finds outlines hard to read), a full-strength
+	-- shadow instead so white text holds up on yellow and red fills.
+	local bright = flags == "BRIGHT"
+	if bright then outline = "SHADOW" end
 	local shadow = outline == "SHADOW"
 	if outline == "NONE" or shadow then outline = "" end
 	local ok = pcall(fontString.SetFont, fontString, path, size, outline)
@@ -50,7 +55,7 @@ function Soul:ApplyFont(fontString, size, flags)
 		pcall(fontString.SetFont, fontString, STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", size, outline)
 	end
 	if shadow then
-		fontString:SetShadowColor(0, 0, 0, 0.9)
+		fontString:SetShadowColor(0, 0, 0, bright and 1 or 0.9)
 		fontString:SetShadowOffset(1, -1)
 	elseif outline ~= "" then
 		fontString:SetShadowOffset(0, 0)

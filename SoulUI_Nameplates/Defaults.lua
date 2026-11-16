@@ -4,10 +4,10 @@ SoulUI.Defaults = SoulUI.Defaults or {}
 SoulUI.Defaults.Nameplates = {
 	enabled = true,
 	width = 140,
-	height = 16,
-	spacing = 2,          -- gap between health, name, cast bar, debuff row and purge row
+	height = 18,          -- compact: the name sits inside this bar
+	spacing = 1,          -- gap between health, name, cast bar, debuff row and purge row
 	showName = true,
-	namePos = "above",    -- above | inside (name on the health bar)
+	namePos = "inside",   -- inside (name on the health bar) | above
 	nameSize = 0,         -- 0 = sized from the bar height
 	showPercent = true,   -- health percent on the bar
 	percentSize = 0,      -- 0 = sized from the bar height
@@ -17,7 +17,7 @@ SoulUI.Defaults.Nameplates = {
 	targetStyle = "both", -- border | arrows | both | glow | none
 	nonTargetAlpha = 0.85, -- other enemy plates while you target one (1 = no dimming)
 	showCast = true,
-	castHeight = 24,
+	castHeight = 16,
 	castIcon = true,
 	castClick = true, -- the cast bar is part of the click area (targets that enemy)
 	castFont = 0,         -- 0 = sized from the cast height

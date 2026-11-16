@@ -459,8 +459,9 @@ local function ApplyStyle(visual)
 	local showPct = cfg.showPercent ~= false
 	visual._showPct = showPct
 	visual._pctReserve = showPct and floor(pctSize * 2.6 + 0.5) or 0
-	Soul:ApplyFont(visual.Name, nameSize, "OUTLINE")
-	Soul:ApplyFont(visual.HealthText, pctSize, "OUTLINE")
+	local textStyle = nameAbove and "OUTLINE" or "BRIGHT"
+	Soul:ApplyFont(visual.Name, nameSize, textStyle)
+	Soul:ApplyFont(visual.HealthText, pctSize, textStyle)
 	visual.HealthText:SetShown(showPct)
 	if not showPct then visual.HealthText:SetText("") end
 
@@ -543,13 +544,13 @@ local function BuildPlate(index)
 	name:SetJustifyH("LEFT")
 	name:SetWordWrap(false)
 	if name.SetMaxLines then name:SetMaxLines(1) end
-	name:SetTextColor(0.95, 0.95, 0.95)
+	name:SetTextColor(1, 1, 1)
 	visual.Name = name
 	local percent = health:CreateFontString(nil, "OVERLAY")
 	percent:SetPoint("RIGHT", -4, 0)
 	percent:SetJustifyH("RIGHT")
 	percent:SetWordWrap(false)
-	percent:SetTextColor(0.95, 0.95, 0.95)
+	percent:SetTextColor(1, 1, 1)
 	visual.HealthText = percent
 
 	local class = health:CreateTexture(nil, "OVERLAY", nil, 2)

@@ -187,14 +187,22 @@ function P.Nameplate(holder, width)
 	local stage = CreateFrame("Frame", nil, holder)
 	stage:SetPoint("CENTER", 0, -8)
 	local health = Bar(stage)
+	-- Dark track behind the missing health and cast, as on real plates.
+	local track = health:CreateTexture(nil, "BACKGROUND")
+	track:SetAllPoints()
+	track:SetColorTexture(0.06, 0.06, 0.07, 0.9)
 	local name = health:CreateFontString(nil, "OVERLAY")
-	name:SetPoint("LEFT", 4, 0)
+	name:SetWordWrap(false)
+	name:SetJustifyH("LEFT")
 	local pct = health:CreateFontString(nil, "OVERLAY")
 	pct:SetPoint("RIGHT", -4, 0)
 	local cast = CreateFrame("Frame", nil, stage)
 	local castBar = Bar(cast)
 	castBar:SetAllPoints()
 	castBar:SetValue(0.5)
+	local castTrack = castBar:CreateTexture(nil, "BACKGROUND")
+	castTrack:SetAllPoints()
+	castTrack:SetColorTexture(0.06, 0.06, 0.07, 0.9)
 	local castText = castBar:CreateFontString(nil, "OVERLAY")
 	castText:SetPoint("LEFT", 4, 0)
 	local icons = {}
@@ -227,15 +235,19 @@ function P.Nameplate(holder, width)
 		health:SetStatusBarColor(0.85, 0.15, 0.15)
 		health:SetValue(0.64)
 		local gap = cfg.spacing or 2
-		local above = (cfg.namePos or "above") == "above"
+		local above = (cfg.namePos or "inside") == "above"
 		name:ClearAllPoints()
 		if above then
 			name:SetPoint("BOTTOMLEFT", health, "TOPLEFT", 0, gap)
 		else
+			-- Inside: the name stops before the percent and truncates.
 			name:SetPoint("LEFT", health, "LEFT", 4, 0)
+			name:SetPoint("RIGHT", pct, "LEFT", -4, 0)
 		end
-		Soul:ApplyFont(name, (cfg.nameSize or 0) > 0 and cfg.nameSize or math.max(10, h - 4), "OUTLINE")
-		Soul:ApplyFont(pct, (cfg.percentSize or 0) > 0 and cfg.percentSize or math.max(9, h - 5), "OUTLINE")
+		local style = above and "OUTLINE" or "BRIGHT"
+		local autoName = above and math.max(10, h - 4) or math.min(16, math.max(8, h - 5))
+		Soul:ApplyFont(name, (cfg.nameSize or 0) > 0 and cfg.nameSize or autoName, style)
+		Soul:ApplyFont(pct, (cfg.percentSize or 0) > 0 and cfg.percentSize or math.max(9, h - 5), style)
 		name:SetText(cfg.showName and "Venomous Acolyte" or "")
 		pct:SetText(cfg.showPercent ~= false and "64%" or "")
 		local ch = cfg.castHeight or 12
@@ -246,7 +258,8 @@ function P.Nameplate(holder, width)
 		castBar:SetStatusBarTexture(Soul:StatusbarTexture())
 		local c = Soul.Cast.Settings().interruptible
 		castBar:SetStatusBarColor(c[1], c[2], c[3])
-		Soul:ApplyFont(castText, math.max(9, ch - 2), "OUTLINE")
+		local castSize = (cfg.castFont or 0) > 0 and cfg.castFont or math.max(9, math.min(16, math.floor(ch * 0.7 + 0.5)))
+		Soul:ApplyFont(castText, castSize, "BRIGHT")
 		castText:SetText("Poison Bolt")
 		local size = cfg.debuffSize or 20
 		local count = cfg.showDebuffs ~= false and math.min(3, cfg.debuffMax or 5) or 0

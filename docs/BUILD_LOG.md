@@ -2,6 +2,30 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-16 — laptop — 0.9.23 compact nameplates, name inside the bar
+
+The owner asked for a compact plate, closer to Plater: the name bright inside the health bar instead of above it (above gets cluttered in big pulls), and the cast's spell name very bright inside the cast bar.
+
+**New defaults (`SoulUI_Nameplates/Defaults.lua`).** They apply to every profile that never changed these values; older profiles keep their pinned cast height 12.
+- `namePos = "inside"`.
+- `height` 16 → 18.
+- `castHeight` 24 → 16.
+- `spacing` 2 → 1.
+
+**"BRIGHT" text style (`Media.lua` `ApplyFont`).** No outline, since the owner finds outlines hard to read. Instead, a full-strength black shadow, with the text set pure white.
+- On plates it is used for the in-bar name and the percent.
+- It is used for all enemy cast text (plates, target, focus) in `CastBar.lua`.
+- Enemy spell names are also sized at 0.7 of the bar height instead of 0.55: 11pt on a 16px bar.
+
+**Settings preview (`Previews.lua`).** It now matches the real plate:
+- The name truncates before the percent.
+- The same font rules apply.
+- Dark tracks show behind the health and cast bars.
+
+**Checked in game.** On the training dummy, the name is inside and bright, truncates with "…", and the percent sits on the right. The settings preview matches.
+
+**Not checked.** A real enemy cast on a plate (dummies do not cast).
+
 ## 2026-11-16 — laptop — 0.9.22 full settings and edit-mode pass
 
 Every settings page and tab, and edit mode, were opened in game. Fixes:

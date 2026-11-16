@@ -188,9 +188,14 @@ function methods:Layout(height, showIcon, fontSize)
 	end
 	self.Bar:SetPoint("BOTTOMRIGHT", -px, px)
 	self.Bar:SetStatusBarTexture(Soul:StatusbarTexture())
-	local size = fontSize and fontSize > 0 and fontSize or math.max(9, math.min(15, math.floor(height * 0.55 + 0.5)))
-	Soul:ApplyFont(self.Text, size, "OUTLINE")
-	Soul:ApplyFont(self.Time, math.max(8, size - 1), "OUTLINE")
+	-- Enemy spell names are larger relative to the bar: they are read at a glance.
+	local ratio = self.enemy and 0.7 or 0.55
+	local size = fontSize and fontSize > 0 and fontSize or math.max(9, math.min(16, math.floor(height * ratio + 0.5)))
+	-- Enemy casts (plates, target, focus) get the bright style: the spell
+	-- name is what you react to.
+	local style = self.enemy and "BRIGHT" or "OUTLINE"
+	Soul:ApplyFont(self.Text, size, style)
+	Soul:ApplyFont(self.Time, math.max(8, size - 1), style)
 	self.Spark:SetWidth(math.max(6, math.floor(height * 0.6)))
 	if self.enemy then Soul.Cast.Size(self, height) end
 end

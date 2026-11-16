@@ -355,7 +355,7 @@ local function BuildNameplates(col)
 	W.Row2(col, {
 		type = "dropdown", label = "Name", width = 170, disabled = off,
 		items = { { value = "above", label = "Above the bar" }, { value = "inside", label = "Inside the bar" } },
-		get = function() return NP().namePos or "above" end,
+		get = function() return NP().namePos or "inside" end,
 		set = function(v) NP().namePos = v ApplyNP() end,
 	}, {
 		type = "slider", label = "Name size (0 = auto)", min = 0, max = 20, step = 1, disabled = off,
