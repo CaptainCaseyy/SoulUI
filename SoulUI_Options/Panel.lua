@@ -771,9 +771,12 @@ local function NavRow(info, y)
 	if info.addon then
 		row.power = PowerMark(row)
 		row.power:SetPoint("RIGHT", -20, 0)
-		UI.Tip(row, info.title, function()
-			if AddonOn(info.addon) == false then return "Turned off. Turn it on under General > Modules." end
-			return info.description
+		-- Only an off module gets a tooltip: otherwise it would repeat the
+		-- page subtitle and cover the top of the page.
+		UI.Tip(row, nil, function()
+			if AddonOn(info.addon) == false then
+				return info.title .. " is turned off. Turn it on under General > Modules."
+			end
 		end)
 	end
 	local hoverKey = "nav-hover:" .. info.key

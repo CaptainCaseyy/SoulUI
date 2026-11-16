@@ -631,7 +631,7 @@ local function PaintSources(window, cfg, db)
 	ClampScroll(window)
 	if count == 0 then
 		HideRowsFrom(window, 1)
-		ShowEmpty(window, cfg.segment == "overall" and "No combat data yet" or "Waiting for combat")
+		ShowEmpty(window, cfg.segment == "overall" and "No combat data yet" or (DM._inCombat and "Nothing recorded this fight" or "Waiting for combat"))
 		return
 	end
 	ShowEmpty(window, nil)

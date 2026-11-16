@@ -2,6 +2,24 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-16 — laptop — 0.9.21 in-game pass: tooltips, meter text, subtitles
+
+**Checked at the training dummies.** The 0.9.20 cast fill now covers the whole action button.
+
+**`UI.Tip` bug (`UIKit.lua`).** `type(text) == "function" and text() or text` fell through to the function itself when the function returned nil, and `SetText` then errored. It now calls the function and uses its result.
+
+**Settings sidebar (`Panel.lua`).** The tooltip on module rows repeated the page subtitle and covered the first rows of the page. Only a module that is turned off gets a tooltip now ("X is turned off. Turn it on under General > Modules.").
+
+**Meters (`DamageMeters.lua`).** A current-segment window with no data said "Waiting for combat" even in combat; for example, healing done on a warlock. In combat it now says "Nothing recorded this fight".
+
+**Resources page.** The subtitle was cut off; it is shorter now.
+
+**Version.** `Soul.version` was still 0.9.19, because 0.9.20 only bumped Action Bars.
+
+**Checked in game.** After `/reload`: no error, no sidebar tooltip, and the subtitle fits.
+
+**Not checked.** The meter's in-combat text.
+
 ## 2026-11-13 — laptop — 0.9.20 cast animation fits the button
 
 **Cast animation (`ActionBars.lua`).** The gold cast fill (`SpellCastAnimFrame`) and the interrupt flash (`InterruptDisplay`) were not scaled to our button size, so they drew a small box inside larger buttons. They now get the same `size / 45` scale as the other overlays. Not checked in game.

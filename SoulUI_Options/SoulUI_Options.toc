@@ -2,7 +2,7 @@
 ## Title: SoulUI Options
 ## Notes: SoulUI editor
 ## Author: SoulBound
-## Version: 0.9.15
+## Version: 0.9.21
 ## IconTexture: Interface\AddOns\SoulUI\Media\Textures\Logo
 ## Dependencies: SoulUI
 ## LoadOnDemand: 1

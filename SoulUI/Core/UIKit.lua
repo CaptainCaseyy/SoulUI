@@ -473,7 +473,10 @@ end
 -- Tooltip on any frame. text may be a function.
 function UI.Tip(frame, title, text)
 	frame:HookScript("OnEnter", function(self)
-		local body = type(text) == "function" and text() or text
+		-- Not "and text() or text": a function that returns nil would fall
+		-- through to the function itself.
+		local body = text
+		if type(text) == "function" then body = text() end
 		if not title and not body then return end
 		tipGen = tipGen + 1
 		local gen = tipGen

@@ -1006,7 +1006,7 @@ end
 Soul:RegisterPage({
 	key = "resources",
 	title = "Resources",
-	description = "Shards, combo points and runes, or focus, rage, energy and mana when a spec has no class resource. Plus the player cast bar and GCD.",
+	description = "Class resource (shards, combo points, runes or power), cast bar and GCD.",
 	group = "Combat",
 	groupOrder = 3,
 	order = 2,
