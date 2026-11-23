@@ -193,12 +193,19 @@ local function PaintSidebar()
 	for i = 1, #sidebar.buttons do
 		local button = sidebar.buttons[i]
 		local on = (button.key == "all" and not filter) or button.key == filter
+		-- An empty category is dimmed (still clickable) so the list shows
+		-- at a glance where items are.
+		local counts = BG.view and BG.view.catCounts
+		local empty = counts and button.key ~= "all" and (counts[button.key] or 0) == 0
 		if on then
 			button.text:SetTextColor(r, g, b)
 			button.mark:SetColorTexture(r, g, b, 1)
 			button.mark:Show()
 		elseif button.hovered then
 			button.text:SetTextColor(1, 1, 1)
+			button.mark:Hide()
+		elseif empty then
+			button.text:SetTextColor(0.38, 0.38, 0.42)
 			button.mark:Hide()
 		else
 			button.text:SetTextColor(0.75, 0.75, 0.78)
@@ -300,9 +307,10 @@ function BG.BuildExtras(win)
 	Add("all", "All")
 	for i = 1, #BG.CATEGORIES do
 		local c = BG.CATEGORIES[i]
-		if c.key ~= "free" and c.key ~= "other" then Add(c.key, c.label) end
+		if c.key ~= "free" and c.key ~= "other" then Add(c.key, c.short or c.label) end
 	end
 	sidebar.buttons = buttons
+	BG.PaintSidebar = PaintSidebar
 	sidebar:Hide()
 	UI.OnAccent(PaintSidebar)
 

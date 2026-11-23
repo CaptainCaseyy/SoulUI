@@ -78,7 +78,7 @@ BG.CATEGORIES = {
 	{ key = "consumable", label = "Consumables", tip = "Potions, flasks, food and other usable items." },
 	{ key = "quest", label = "Quest", tip = "Quest items, and items that start a quest." },
 	{ key = "reagent", label = "Reagents", tip = "Trade goods and crafting reagents." },
-	{ key = "gem", label = "Gems & Enhancements", tip = "Gems, enchants, armor kits and other item enhancements." },
+	{ key = "gem", label = "Gems & Enhancements", short = "Gems & Enchants", tip = "Gems, enchants, armor kits and other item enhancements." },
 	{ key = "recipe", label = "Recipes", tip = "Recipes, patterns and books." },
 	{ key = "misc", label = "Miscellaneous", tip = "Bags, mounts, pets, toys, glyphs and anything else." },
 	{ key = "other", label = "Items" },
@@ -657,12 +657,12 @@ function BG.StyleRec(rec)
 		btn.Count:SetPoint("BOTTOMRIGHT", -2, 3)
 		btn.Count:SetJustifyH("RIGHT")
 	end
-	Soul:ApplyFont(rec.ilvl, db.ilvlSize or 12)
+	Soul:ApplyFont(rec.ilvl, db.ilvlSize or 12, "BRIGHT")
 	local spot = ILVL_POINTS[db.ilvlAnchor] or ILVL_POINTS.TOPLEFT
 	rec.ilvl:ClearAllPoints()
 	rec.ilvl:SetPoint(spot[1], spot[2], spot[3])
 	rec.ilvl:SetJustifyH(spot[4])
-	Soul:ApplyFont(rec.bind, max(8, floor((db.ilvlSize or 12) * 0.8 + 0.5)))
+	Soul:ApplyFont(rec.bind, max(8, floor((db.ilvlSize or 12) * 0.8 + 0.5)), "BRIGHT")
 	rec.bind:ClearAllPoints()
 	if db.ilvlAnchor == "BOTTOMLEFT" then
 		rec.bind:SetPoint("TOPLEFT", 2, -2)
@@ -1358,6 +1358,10 @@ local function Layout()
 	local firstN, firstR
 	local junk = 0
 	local matched = 0
+	-- Items per category, for dimming empty sidebar entries.
+	local counts = view.catCounts or {}
+	view.catCounts = counts
+	wipe(counts)
 	for i = 1, #view.bags do
 		local bag = view.bags[i]
 		local list = view.recs[bag]
@@ -1368,9 +1372,10 @@ local function Layout()
 			if rec.has then
 				if rec.junk then junk = junk + 1 end
 				-- Classified for the filter even when sections are off.
-				local cat = (grouped or filter) and Classify(rec, cats) or "other"
+				local cat = (grouped or filter or sidebar) and Classify(rec, cats) or "other"
 				local pinned = type(pins) == "table" and type(rec.itemID) == "number" and not issecret(rec.itemID) and pins[rec.itemID]
 				if pinned then cat = "pin" end
+				counts[cat] = (counts[cat] or 0) + 1
 				if not filter or cat == filter then
 					matched = matched + 1
 					if byBag then
@@ -1450,6 +1455,7 @@ local function Layout()
 		win.emptyNote:Hide()
 	end
 	win:SetSize(w, top + viewH + pad + FOOTER)
+	if BG.PaintSidebar then BG.PaintSidebar() end
 	win:SetScrollOffset(scroll:GetVerticalScroll() or 0)
 	UpdateFooter()
 	UpdateBagBar()

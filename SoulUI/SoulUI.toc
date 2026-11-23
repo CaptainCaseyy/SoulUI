@@ -2,7 +2,7 @@
 ## Title: SoulUI
 ## Notes: SoulBound unit-frame and nameplate core
 ## Author: SoulBound
-## Version: 0.9.24
+## Version: 0.9.25
 ## OptionalDeps: BigWigs, RaiderIO
 ## SavedVariables: SoulUIDB
 ## Category: SoulUI

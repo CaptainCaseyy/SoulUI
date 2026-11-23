@@ -2,6 +2,18 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-23 — laptop — 0.9.25 bags polish, preview cast fit
+
+**Bag sidebar (`BagsExtra.lua`, `Bags.lua`):**
+- A category with no items (Pinned, New, Junk…) is dimmed but still clickable. The layout pass counts items per category into `view.catCounts`.
+- The sidebar uses a short label ("Gems & Enchants") where the full one was cut off. Section titles keep "Gems & Enhancements".
+
+**Item level and bind text** use the BRIGHT style, so quality-colored numbers stay readable on a matching quality border.
+
+**Unit frame preview (`Previews.lua`):** it fits its cast bar inside the stage. The cast text follows the real size rule, so an 80px Target cast no longer shows 48pt text running off the top.
+
+**Checked in game:** the bags open, empty categories are dimmed, the label fits, and the Target preview fits.
+
 ## 2026-11-23 — laptop — 0.9.24 every option traced, function bugs fixed
 
 The owner asked for every option to be function-tested and for a visual refinement pass.
