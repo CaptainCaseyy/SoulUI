@@ -22,7 +22,7 @@ SoulUI.Defaults.DamageMeters = {
 	border = false,
 	refresh = 0.05,
 	showClock = true,
-	bgAlpha = 0.55,
+	bgAlpha = 0.85,       -- window background; lower lets the world (and the quest tracker) show through
 	-- 0.6.2 meter polish
 	valueColumns = true,    -- "both"/"percent": numbers in two right-aligned columns
 	secondaryAlpha = 0.62,  -- brightness of the per-second / share column (0.3-1)

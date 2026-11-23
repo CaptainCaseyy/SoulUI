@@ -1113,7 +1113,7 @@ local function BuildMeters(col)
 		set = function(v) DMdb().rowHeight = v DropWindowSize(ROW_KEYS) ApplyDM() end,
 	}, {
 		type = "slider", label = "Background opacity", min = 0, max = 1, step = 0.05, disabled = off,
-		get = function() return DMdb().bgAlpha or 0.55 end,
+		get = function() return DMdb().bgAlpha or 0.85 end,
 		set = function(v) DMdb().bgAlpha = v ApplyDM() end,
 	})
 	W.Section(col, "Bars")

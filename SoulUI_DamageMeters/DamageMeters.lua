@@ -1108,7 +1108,7 @@ function DM:Apply()
 			point = "CENTER", relPoint = "CENTER", x = cfg.x, y = cfg.y,
 		})
 		local tint = cfg.color
-		local alpha = db.bgAlpha or 0.75
+		local alpha = db.bgAlpha or 0.85
 		if type(tint) == "table" then
 			window.bg:SetColorTexture(tint[1], tint[2], tint[3], alpha)
 		else

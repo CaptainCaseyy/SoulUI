@@ -2,7 +2,7 @@
 ## Title: SoulUI Damage Meters
 ## Notes: Damage and healing meters from C_DamageMeter
 ## Author: SoulBound
-## Version: 0.9.24
+## Version: 0.9.26
 ## IconTexture: Interface\AddOns\SoulUI\Media\Textures\Logo
 ## Dependencies: SoulUI
 ## Category: SoulUI

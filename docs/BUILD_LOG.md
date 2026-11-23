@@ -2,6 +2,15 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-23 — laptop — 0.9.26 meters no longer see-through
+
+**Meter background opacity default 0.55 → 0.85** (`DamageMeters/Defaults.lua`, plus the code and option fallbacks). At 0.55 the quest tracker's text read through the meter windows. Profiles from before 0.9.14 keep their pinned 0.75; the slider still goes lower.
+
+**Not done:**
+- Blizzard's quest tracker still grows down behind the meters. Its height is a Blizzard Edit Mode setting.
+- The chat window runs under the player frame; it is sized by Blizzard's chat settings.
+- Both were to be adjusted in game, but a Windows SmartScreen prompt held keyboard focus.
+
 ## 2026-11-23 — laptop — 0.9.25 bags polish, preview cast fit
 
 **Bag sidebar (`BagsExtra.lua`, `Bags.lua`):**
