@@ -236,7 +236,7 @@ local function EnsureAuras(visual)
 	local purgeSize = cfg.purgeSize or 20
 	visual._debuffSize = debuffSize
 	visual.Debuffs = Soul.Auras.Icons(visual, "none", {
-		{ key = "debuffs", filter = "HARMFUL", max = cfg.debuffMax or 6, size = debuffSize, border = { 0.75, 0.15, 0.15 } },
+		{ key = "debuffs", filter = "HARMFUL|PLAYER", max = cfg.debuffMax or 6, size = debuffSize, border = { 0.75, 0.15, 0.15 } },
 	}, { point = "BOTTOMLEFT", relPoint = "TOPLEFT", x = 0, y = 3, width = cfg.width, height = debuffSize })
 	visual.Buffs = Soul.Auras.Icons(visual, "none", {
 		{ key = "buffs", filter = "HELPFUL", max = cfg.debuffMax or 6, size = debuffSize },
@@ -853,7 +853,9 @@ function NP:OnEnable()
 				Soul.Auras.SetUnit(visual.PurgeGlow, visual.unit)
 				ApplyAuraVisibility(visual)
 			else
-				-- Restyles during combat could not move the aura rows.
+				-- Restyles during combat could not move the aura rows or
+				-- switch them on and off.
+				ApplyAuraVisibility(visual)
 				LayoutAuras(visual)
 			end
 		end
@@ -961,6 +963,9 @@ function NP:OnEnable()
 			if key then ApplyStyle(visual) end
 		end
 		if sample:IsShown() then LayoutSample() end
+		-- Edit-mode resizing changes width, height and cast height: the
+		-- click area must follow (it is set out of combat inside).
+		NP:ApplyHitbox()
 	end
 
 	NP.sample = sample

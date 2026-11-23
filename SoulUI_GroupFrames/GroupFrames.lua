@@ -377,6 +377,10 @@ local function LayoutChrome(button, cfg)
 	if cfg.showPower then
 		local thickness = Snap(cfg.powerHeight or 4)
 		if thickness < px then thickness = px end
+		-- Never more than the frame minus a usable health bar: a tall power
+		-- bar on a short frame used to invert the health bar.
+		local maxThick = Snap((cfg.height or 40) * 0.5)
+		if thickness > maxThick then thickness = math.max(px, maxThick) end
 		-- 1px black separator between health and power.
 		health:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -px, thickness + px * 2)
 		power:ClearAllPoints()
@@ -404,7 +408,13 @@ local function LayoutChrome(button, cfg)
 		if button.OverAbsorb then frames.PaintShield(button.OverAbsorb, "overflow") end
 	else
 		absorb:SetStatusBarTexture(texture)
-		absorb:SetStatusBarColor(1, 1, 1, 0.9)
+		absorb:SetStatusBarColor(0.6, 0.85, 1, 0.5)
+		-- Without the Unit Frames module nothing else colors the overflow,
+		-- and its plain white texture would cover the frame.
+		if button.OverAbsorb then
+			button.OverAbsorb:SetStatusBarTexture(texture)
+			button.OverAbsorb:SetStatusBarColor(0.75, 0.9, 1, 0.22)
+		end
 	end
 	absorb:SetWidth(math.max(px, w - px * 2))
 	local showAbsorb = cfg.showAbsorbs ~= false

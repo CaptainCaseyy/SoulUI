@@ -47,6 +47,7 @@ end
 
 Q:Feature({
 	key = "questSkin",
+	refresh = function() SkinTracker() end,
 	enable = function()
 		SkinTracker()
 		local tracker = Tracker()
@@ -233,5 +234,6 @@ end
 Q:Feature({
 	key = "chatSkin",
 	enable = SkinChat,
+	refresh = SkinChat, -- follows General > Look font changes
 	disable = UnskinChat,
 })

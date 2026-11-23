@@ -53,8 +53,12 @@ local function BuildUnitFrames(col)
 	W.Section(col, "All frames")
 	W.Row(col, {
 		type = "toggle", label = "Hide Blizzard player, target, focus and pet frames",
+		tooltip = "Hiding is immediate. Showing Blizzard's frames again needs a reload.",
 		get = function() return UF().hideBlizzard end,
-		set = function(v) UF().hideBlizzard = Bool(v) ApplyUF() end,
+		set = function(v)
+			UF().hideBlizzard = Bool(v) ApplyUF()
+			if not v then Soul:Print("Blizzard's unit frames come back after a reload (/reload).") end
+		end,
 	})
 	W.Row2(col, {
 		type = "toggle", label = "Cleanse outline",
@@ -82,11 +86,11 @@ local function BuildUnitFrames(col)
 		set = function(v) Unit().showPower = Bool(v) ApplyUF() end,
 	})
 	W.Row2(col, {
-		type = "slider", label = "Width", min = 40, max = 600, step = 1, disabled = off,
+		type = "slider", label = "Width", min = 40, max = 800, step = 1, disabled = off,
 		get = function() return Unit().width end,
 		set = function(v) Unit().width = v ApplyUF() end,
 	}, {
-		type = "slider", label = "Health height", min = 8, max = 160, step = 1, disabled = off,
+		type = "slider", label = "Health height", min = 8, max = 200, step = 1, disabled = off,
 		get = function() return Unit().height end,
 		set = function(v) Unit().height = v ApplyUF() end,
 	})
@@ -100,7 +104,7 @@ local function BuildUnitFrames(col)
 		tooltip = "Off: class color for players, reaction color for NPCs.",
 		get = function() local u = Unit() return type(u.color) == "table" end,
 		set = function(v)
-			if v then Unit().color = { 0.53, 0.53, 0.93 } else Unit().color = nil end
+			if v then Unit().color = { 0.53, 0.53, 0.93 } else Unit().color = false end
 			Apply("UnitFrames", "colors")
 		end,
 	})
@@ -136,7 +140,8 @@ local function BuildUnitFrames(col)
 		get = function() return Unit().showName ~= false end,
 		set = function(v) Unit().showName = Bool(v) ApplyUF() end,
 	}, {
-		type = "dropdown", label = "Name position", width = 170, disabled = off,
+		type = "dropdown", label = "Name position", width = 170,
+		disabled = function() return off() or Unit().showName == false end,
 		items = {
 			{ value = "inside", label = "Inside the bar" },
 			{ value = "above", label = "Above the bar" },
@@ -145,16 +150,19 @@ local function BuildUnitFrames(col)
 		set = function(v) Unit().namePosition = v ApplyUF() end,
 	})
 	W.Row2(col, {
-		type = "slider", label = "Name size (0 = auto)", min = 0, max = 32, step = 1, disabled = off,
+		type = "slider", label = "Name size (0 = auto)", min = 0, max = 32, step = 1,
+		disabled = function() return off() or Unit().showName == false end,
 		get = function() return Unit().nameSize or 0 end,
 		set = function(v) Unit().nameSize = v ApplyUF() end,
 	}, {
-		type = "slider", label = "Health size (0 = auto)", min = 0, max = 32, step = 1, disabled = off,
+		type = "slider", label = "Health size (0 = auto)", min = 0, max = 32, step = 1,
+		disabled = function() return off() or Unit().healthFormat == "none" end,
 		get = function() return Unit().healthSize or 0 end,
 		set = function(v) Unit().healthSize = v ApplyUF() end,
 	})
 	W.Row(col, {
-		type = "toggle", label = "Class-colored name (players)", disabled = off,
+		type = "toggle", label = "Class-colored name (players)",
+		disabled = function() return off() or Unit().showName == false end,
 		get = function() return Unit().nameClassColor and true or false end,
 		set = function(v) Unit().nameClassColor = Bool(v) ApplyUF() end,
 	})
@@ -166,7 +174,7 @@ local function BuildUnitFrames(col)
 		get = function() return Unit().showCast end,
 		set = function(v) Unit().showCast = Bool(v) ApplyUF() end,
 	}, {
-		type = "slider", label = "Cast height", min = 8, max = 60, step = 1,
+		type = "slider", label = "Cast height", min = 8, max = 80, step = 1,
 		disabled = function() return off() or not Unit().showCast end,
 		get = function() return Unit().castHeight or 18 end,
 		set = function(v) Unit().castHeight = v ApplyUF() end,
@@ -175,7 +183,7 @@ local function BuildUnitFrames(col)
 		type = "slider", label = "Cast width (0 = frame)", min = 0, max = 600, step = 1,
 		disabled = function() return off() or not Unit().showCast end,
 		get = function() return Unit().castWidth or 0 end,
-		set = function(v) Unit().castWidth = v > 0 and v or nil ApplyUF() end,
+		set = function(v) Unit().castWidth = v ApplyUF() end,
 	}, {
 		type = "toggle", label = "Spell icon",
 		disabled = function() return off() or not Unit().showCast end,
@@ -311,7 +319,7 @@ local function BuildNameplates(col)
 		get = function() return NP().showCast end,
 		set = function(v) NP().showCast = Bool(v) ApplyNP() end,
 	}, {
-		type = "slider", label = "Cast height", min = 4, max = 40, step = 1,
+		type = "slider", label = "Cast height", min = 6, max = 40, step = 1,
 		disabled = function() return off() or not NP().showCast end,
 		get = function() return NP().castHeight end,
 		set = function(v) NP().castHeight = v ApplyNP() end,
@@ -353,12 +361,12 @@ local function BuildNameplates(col)
 		set = function(v) NP().nonTargetAlpha = v ApplyNP() end,
 	})
 	W.Row2(col, {
-		type = "dropdown", label = "Name", width = 170, disabled = off,
+		type = "dropdown", label = "Name", width = 170, disabled = function() return off() or not NP().showName end,
 		items = { { value = "above", label = "Above the bar" }, { value = "inside", label = "Inside the bar" } },
 		get = function() return NP().namePos or "inside" end,
 		set = function(v) NP().namePos = v ApplyNP() end,
 	}, {
-		type = "slider", label = "Name size (0 = auto)", min = 0, max = 20, step = 1, disabled = off,
+		type = "slider", label = "Name size (0 = auto)", min = 0, max = 20, step = 1, disabled = function() return off() or not NP().showName end,
 		get = function() return NP().nameSize or 0 end,
 		set = function(v) NP().nameSize = v ApplyNP() end,
 	})
@@ -384,7 +392,7 @@ local function BuildNameplates(col)
 		set = function(v) NP().raidMarkerSize = v ApplyNP() end,
 	})
 	W.Row2(col, {
-		type = "toggle", label = "Elite and rare mark", disabled = off,
+		type = "toggle", label = "Elite and rare mark", disabled = function() return off() or not NP().showName end,
 		get = function() return NP().showClassification ~= false end,
 		set = function(v) NP().showClassification = Bool(v) ApplyNP() end,
 	}, {
@@ -395,7 +403,8 @@ local function BuildNameplates(col)
 	if Soul.Options.CastColorRows then Soul.Options.CastColorRows(col) end
 	W.Section(col, "Auras")
 	W.Row2(col, {
-		type = "toggle", label = "Your debuffs", disabled = off,
+		type = "toggle", label = "Your debuffs and their buffs", disabled = off,
+		tooltip = "A row of the debuffs you put on the enemy, and a row of its buffs.",
 		get = function() return NP().showDebuffs ~= false end,
 		set = function(v) NP().showDebuffs = Bool(v) ApplyNP() end,
 	}, {
@@ -422,12 +431,14 @@ local function BuildNameplates(col)
 		set = function(v) NP().purgeGlow = Bool(v) ApplyNP() end,
 	})
 	W.Row2(col, {
-		type = "slider", label = "Debuff icon size", min = 12, max = 40, step = 1, disabled = off,
+		type = "slider", label = "Debuff icon size", min = 12, max = 40, step = 1,
+		disabled = function() return off() or NP().showDebuffs == false end,
 		tooltip = "Applies after /reload.",
 		get = function() return NP().debuffSize or 20 end,
 		set = function(v) NP().debuffSize = v ApplyNP() end,
 	}, {
-		type = "slider", label = "Purge icon size", min = 12, max = 40, step = 1, disabled = off,
+		type = "slider", label = "Purge icon size", min = 12, max = 40, step = 1,
+		disabled = function() return off() or NP().purge == "off" end,
 		tooltip = "Applies after /reload.",
 		get = function() return NP().purgeSize or 20 end,
 		set = function(v) NP().purgeSize = v ApplyNP() end,
@@ -441,11 +452,14 @@ local function BuildNameplates(col)
 	}, {
 		type = "toggle", label = "Stack plates",
 		tooltip = "Plates push apart instead of drawing over each other.",
+		disabled = function() return not NP().manageCVars end,
 		get = function() return NP().stack end,
 		set = function(v) NP().stack = Bool(v) ApplyNP() end,
 	})
 	W.Row(col, {
-		type = "toggle", label = "Show every friendly nameplate",
+		type = "toggle", label = "Always show nameplates",
+		tooltip = "Blizzard's Always Show Nameplates: plates stay up out of combat, not only while fighting.",
+		disabled = function() return not NP().manageCVars end,
 		get = function() return NP().showAll end,
 		set = function(v) NP().showAll = Bool(v) ApplyNP() end,
 	})
@@ -504,11 +518,11 @@ local function GroupTab(kind)
 			set = function(v) cfg().showPlayer = Bool(v) apply() end,
 		})
 		W.Row2(col, {
-			type = "slider", label = "Width", min = 40, max = 320, step = 1, disabled = off,
+			type = "slider", label = "Width", min = 40, max = 400, step = 1, disabled = off,
 			get = function() return cfg().width end,
 			set = function(v) cfg().width = v apply() end,
 		}, {
-			type = "slider", label = "Height", min = 16, max = 160, step = 1, disabled = off,
+			type = "slider", label = "Height", min = 16, max = 200, step = 1, disabled = off,
 			get = function() return cfg().height end,
 			set = function(v) cfg().height = v apply() end,
 		})
@@ -557,7 +571,9 @@ local function GroupTab(kind)
 		end
 		W.Section(col, "Look")
 		W.Row2(col, {
-			type = "dropdown", label = "Health color", width = 170, disabled = off,
+			type = "dropdown", label = "Health color", width = 170,
+			tooltip = "A custom bar color from edit mode overrides this until cleared.",
+			disabled = function() local c = cfg().color return off() or type(c) == "table" end,
 			items = { { value = "class", label = "Class color" }, { value = "dark", label = "Dark (class-colored names)" } },
 			get = function() return cfg().healthColor or "class" end,
 			set = function(v) cfg().healthColor = v apply() end,
@@ -577,13 +593,20 @@ local function GroupTab(kind)
 			get = function() return cfg().healthText or (kind == "raid" and "deficit" or "percent") end,
 			set = function(v) cfg().healthText = v apply() end,
 		})
-		W.Row2(col, Toggle("hideFullHealthText", "Hide text at full health"), {
-			type = "slider", label = "Health text size (0 = auto)", min = 0, max = 28, step = 1, disabled = off,
+		local function HealthText() return cfg().healthText or (kind == "raid" and "deficit" or "percent") end
+		local hideFull = Toggle("hideFullHealthText", "Hide text at full health",
+			"Percent only: missing health is already hidden at full health.")
+		hideFull.disabled = function() return off() or HealthText() ~= "percent" end
+		W.Row2(col, hideFull, {
+			type = "slider", label = "Health text size (0 = auto)", min = 0, max = 28, step = 1,
+			disabled = function() return off() or HealthText() == "none" end,
 			get = function() return cfg().healthFont or 0 end,
 			set = function(v) cfg().healthFont = v apply() end,
 		})
 		W.Row2(col, Toggle("autoFont", "Shrink text to fit"), {
-			type = "toggle", label = "Class-colored names", disabled = off,
+			type = "toggle", label = "Class-colored names",
+			tooltip = "With the dark health color, names are always class-colored.",
+			disabled = function() return off() or cfg().healthColor == "dark" end,
 			get = function() return cfg().nameClassColor and true or false end,
 			set = function(v) cfg().nameClassColor = Bool(v) apply() end,
 		})
@@ -596,7 +619,8 @@ local function GroupTab(kind)
 		W.Row2(col, Toggle("targetHighlight", "Outline your target"), Toggle("hoverHighlight", "Outline on mouseover"))
 		W.Row(col, Toggle("tooltip", "Unit tooltip", "The normal game tooltip. RaiderIO adds its score on this tooltip."))
 		W.Row(col, {
-			type = "dropdown", label = "Dispel icons", width = 170, disabled = off,
+			type = "dropdown", label = "Dispel icon position", width = 170,
+			disabled = function() return off() or not cfg().showAuras end,
 			items = { { value = "inside", label = "Inside the frame" }, { value = "above", label = "Above the frame" } },
 			get = function() return cfg().auraPosition or "inside" end,
 			set = function(v) cfg().auraPosition = v apply() end,
@@ -818,7 +842,7 @@ local function BuildPips(col)
 		get = function() return p().width end,
 		set = function(v) p().width = v ApplyRB() end,
 	}, {
-		type = "slider", label = "Height", min = 4, max = 80, step = 1, disabled = off,
+		type = "slider", label = "Height", min = 4, max = 120, step = 1, disabled = off,
 		get = function() return p().height end,
 		set = function(v) p().height = v ApplyRB() end,
 	})
@@ -887,7 +911,7 @@ local function BuildCast(col)
 		get = function() return c().width end,
 		set = function(v) c().width = v ApplyRB() end,
 	}, {
-		type = "slider", label = "Height", min = 6, max = 60, step = 1, disabled = off,
+		type = "slider", label = "Height", min = 6, max = 120, step = 1, disabled = off,
 		get = function() return c().height end,
 		set = function(v) c().height = v ApplyRB() end,
 	})
@@ -1055,6 +1079,16 @@ local function BuildMeters(col)
 	-- change here drops those per-window sizes (false, so the defaults merge
 	-- does not put meter 1's stored size back).
 	local WIDTH_KEYS, ROW_KEYS = { "pixelWidth" }, { "pixelHeight", "rows" }
+	-- A window showing one player's spell breakdown must leave it when its
+	-- mode or segment changes, or the old row index points at someone else.
+	local function ClearBreakdown(index)
+		local DM = Soul:GetModule("DamageMeters")
+		local window = DM and DM.windows and DM.windows[index]
+		if window then
+			window._breakdown = nil
+			if DM.NewView then pcall(DM.NewView, DM, index) end
+		end
+	end
 	local function DropWindowSize(keys)
 		local windows = DMdb().windows
 		if type(windows) ~= "table" then return end
@@ -1076,7 +1110,7 @@ local function BuildMeters(col)
 	W.Row2(col, {
 		type = "slider", label = "Row height", min = 10, max = 40, step = 1, disabled = off,
 		get = function() return DMdb().rowHeight end,
-		set = function(v) DMdb().rowHeight = v ApplyDM() end,
+		set = function(v) DMdb().rowHeight = v DropWindowSize(ROW_KEYS) ApplyDM() end,
 	}, {
 		type = "slider", label = "Background opacity", min = 0, max = 1, step = 0.05, disabled = off,
 		get = function() return DMdb().bgAlpha or 0.55 end,
@@ -1092,7 +1126,7 @@ local function BuildMeters(col)
 			{ value = "persec", label = "412K per second" },
 			{ value = "percent", label = "138M  28%" },
 		},
-		get = function() return DMdb().valueFormat or "both" end,
+		get = function() return DMdb().valueFormat or "pipe" end,
 		set = function(v) DMdb().valueFormat = v ApplyDM() end,
 	}, {
 		type = "statusbar", label = "Bar texture", disabled = off,
@@ -1121,7 +1155,7 @@ local function BuildMeters(col)
 	W.Row2(col, {
 		type = "slider", label = "Row gap", min = 0, max = 6, step = 1, disabled = off,
 		get = function() return DMdb().rowGap or 1 end,
-		set = function(v) DMdb().rowGap = v ApplyDM() end,
+		set = function(v) DMdb().rowGap = v DropWindowSize(ROW_KEYS) ApplyDM() end,
 	}, {
 		type = "slider", label = "Text size (0 = auto)", min = 0, max = 24, step = 1, disabled = off,
 		get = function() return DMdb().fontSize or 0 end,
@@ -1139,8 +1173,16 @@ local function BuildMeters(col)
 			set = function(v) DMdb()[key] = Bool(v) ApplyDM() end,
 		}
 	end
-	W.Row2(col, DMToggle("valueColumns", "Number columns", "Total and per second (or share) in two aligned columns."), {
-		type = "slider", label = "Second column brightness", min = 0.3, max = 1, step = 0.05, disabled = off,
+	-- Columns only exist for the two-number formats.
+	local function TwoNumbers()
+		local f = DMdb().valueFormat or "pipe"
+		return f == "both" or f == "percent"
+	end
+	local columns = DMToggle("valueColumns", "Number columns", "Total and per second (or share) in two aligned columns. Only for 138M (412K) and 138M 28%.")
+	columns.disabled = function() return off() or not TwoNumbers() end
+	W.Row2(col, columns, {
+		type = "slider", label = "Second column brightness", min = 0.3, max = 1, step = 0.05,
+		disabled = function() return off() or not TwoNumbers() or DMdb().valueColumns == false end,
 		get = function() return DMdb().secondaryAlpha or 0.62 end,
 		set = function(v) DMdb().secondaryAlpha = v ApplyDM() end,
 	})
@@ -1160,7 +1202,7 @@ local function BuildMeters(col)
 	W.Row2(col, {
 		type = "slider", label = "Height", min = 14, max = 40, step = 1, disabled = off,
 		get = function() return DMdb().headerHeight or 22 end,
-		set = function(v) DMdb().headerHeight = v ApplyDM() end,
+		set = function(v) DMdb().headerHeight = v DropWindowSize(ROW_KEYS) ApplyDM() end,
 	}, {
 		type = "color", label = "Header color", disabled = off,
 		get = function() local c = DMdb().headerColor or { 0.106, 0.106, 0.106 } return c[1], c[2], c[3] end,
@@ -1207,13 +1249,13 @@ local function BuildMeters(col)
 		}, {
 			type = "dropdown", label = "Mode", items = METER_TYPES, width = 180, disabled = winOff,
 			get = function() return cfg().type end,
-			set = function(v) cfg().type = v ApplyDM() end,
+			set = function(v) cfg().type = v ClearBreakdown(index) ApplyDM() end,
 		})
 		W.Row2(col, {
 			type = "dropdown", label = "Segment", width = 180, disabled = winOff,
 			items = { { value = "current", label = "Current fight" }, { value = "overall", label = "Overall" } },
 			get = function() return cfg().segment end,
-			set = function(v) cfg().segment = v ApplyDM() end,
+			set = function(v) cfg().segment = v ClearBreakdown(index) ApplyDM() end,
 		}, {
 			type = "color", label = "Background tint", disabled = winOff,
 			get = W.ColorGet(cfg, "color", 0.02, 0.02, 0.025),

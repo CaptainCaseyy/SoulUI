@@ -188,6 +188,9 @@ function Q.RestoreCVar(name)
 	local record = Soul.db and Soul.db.cvars and Soul.db.cvars[name]
 	if type(record) == "table" and record.owner == "QoL" and record.original ~= nil then
 		Soul:SetOwnedCVar(name, record.original, "QoL")
+		-- Forget it: the next change records the value at that time, not a
+		-- stale one from the first time the option was ever used.
+		Soul.db.cvars[name] = nil
 	end
 end
 
@@ -376,5 +379,8 @@ function Q:OnEnable()
 	Soul:On("ProfileChanged", function() Q:Apply() end)
 	Soul:On("ThemeChanged", function()
 		for _, display in pairs(displays) do display:Refresh() end
+		-- Features that draw with the theme font or accent (skins, combat
+		-- text font, cursor trail) re-apply through their refresh.
+		Q:Apply()
 	end)
 end

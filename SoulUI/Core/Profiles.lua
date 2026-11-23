@@ -109,15 +109,22 @@ function Soul:ImportProfile(text, profileKey)
 	end
 	local name = profileKey
 	if type(name) ~= "string" or name == "" then
-		name = payload.name or "Imported"
+		name = type(payload.name) == "string" and payload.name or "Imported"
 	end
+	-- Never overwrite an existing profile (often the active one): an import
+	-- named "Default" becomes "Default (imported)", then "(imported 2)"...
+	name = name:sub(1, 28)
 	if self.db.profiles[name] then
-		self.db.profiles[name] = payload.profile
-	else
-		local created, createErr = self:CreateProfile(name)
-		if not created then return false, createErr end
-		self.db.profiles[name] = payload.profile
+		local base, n = name .. " (imported)", 2
+		name = base
+		while self.db.profiles[name] do
+			name = base:sub(1, -2) .. " " .. n .. ")"
+			n = n + 1
+		end
 	end
+	local created, createErr = self:CreateProfile(name)
+	if not created then return false, createErr end
+	self.db.profiles[name] = payload.profile
 	self:EnsureProfileShape(self.db.profiles[name])
 	self:SetProfile(name)
 	return true

@@ -189,6 +189,13 @@ Q:Feature({
 		end,
 	},
 	enable = ScheduleOpen,
+	-- Events stop while off, so a vendor or bank closed meanwhile would
+	-- leave its busy flag stuck and block opening until the next visit.
+	disable = function()
+		wipe(open.busy)
+		wipe(open.interaction)
+		open.looting = false
+	end,
 })
 
 ------------------------------------------------------------------------------
@@ -555,6 +562,7 @@ Q:Feature({
 			Soul:Print("Combat logging stopped.")
 		end
 		logStarted = false
+		Q.RestoreCVar("advancedCombatLogging")
 	end,
 })
 

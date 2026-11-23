@@ -151,7 +151,8 @@ Q:Feature({
 			if not sell.ticker or Q.IsSecret(message) then return end
 			if message == ERR_VENDOR_DOESNT_BUY then
 				sell.open = false
-				StopSelling(true)
+				-- Nothing sold here: no "Sold N junk items" report.
+				StopSelling(false)
 			end
 		end,
 	},

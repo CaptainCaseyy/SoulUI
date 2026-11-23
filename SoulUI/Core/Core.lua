@@ -3,7 +3,7 @@ if SoulUI_Blocked then return end
 SoulUI = SoulUI or {}
 local Soul = SoulUI
 
-Soul.version = "0.9.23"
+Soul.version = "0.9.24"
 Soul.modules = {}
 Soul.optionPages = {}
 Soul._callbacks = {}
@@ -271,6 +271,7 @@ core:SetScript("OnEvent", function(_, event, arg1)
 		core:UnregisterEvent("ADDON_LOADED")
 	elseif event == "PLAYER_LOGIN" then
 		Soul.loginDone = true
+		Soul:RestoreOrphanCVars()
 		if Soul.Pixel then Soul.Pixel:Refresh() end
 		local function Start()
 			if UIParent:GetWidth() < 400 then

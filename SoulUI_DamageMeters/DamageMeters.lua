@@ -1093,7 +1093,9 @@ function DM:Apply()
 		TextStyle(probe.Value, fontSize, db)
 		window._rankWidth = MeasureWidth(probe.Rank, "20", fontSize)
 		local format = db.valueFormat or "both"
-		window._columnWidth = MeasureWidth(probe.Value, format == "percent" and "100%" or "(888.8K)", fontSize)
+		-- In combat the share is secret and the column shows "(412.5K)" instead
+		-- of a percent, so it is always sized for the wider text.
+		window._columnWidth = MeasureWidth(probe.Value, "(888.8K)", fontSize)
 		window._mode = nil
 		for n = 1, POOL do
 			local row = window.rows[n]

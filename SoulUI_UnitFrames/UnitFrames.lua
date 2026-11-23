@@ -894,7 +894,7 @@ function UF:Layout(unit)
 		Soul:ShowBorder(frame, false)
 		Skin(frame)
 		local castH = live.castHeight or 16
-		local castW = live.castWidth or live.width
+		local castW = (live.castWidth or 0) > 0 and live.castWidth or live.width
 		frame.Cast:SetWidth(castW)
 		frame.Cast:Layout(castH, live.castIcon ~= false, live.castFont or 0)
 		Soul:Place(frame, "UnitFrames:" .. unit, { point = "CENTER", relPoint = "CENTER", x = live.x, y = live.y })

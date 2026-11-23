@@ -333,9 +333,20 @@ local function PaintButton(btn)
 			if name then name:SetText("") end
 			if cooldown and cooldown.Clear then pcall(cooldown.Clear, cooldown) end
 			if btn._soulEmpty then btn._soulEmpty:Show() end
+			-- "Show empty slots" off: no frame and no key label either.
+			if DB().showEmpty == false then
+				if btn.HotKey then btn.HotKey:SetAlpha(0) end
+				Soul:ShowBorder(btn, false)
+				btn._soulHidEmpty = true
+			end
 			return
 		end
 		if btn._soulEmpty then btn._soulEmpty:Hide() end
+		if btn._soulHidEmpty then
+			btn._soulHidEmpty = nil
+			if btn.HotKey then btn.HotKey:SetAlpha(1) end
+			Soul:ShowBorder(btn, DB().showBorder and true or false, 1)
+		end
 	end
 	WatchRange(btn, action)
 	if icon and C_ActionBar.GetActionTexture then
@@ -828,6 +839,23 @@ FitAlert = function(btn)
 	alert:ClearAllPoints()
 	alert:SetPoint("CENTER", btn, "CENTER", 0, 0)
 	alert:SetAlpha(DB().procGlow == false and 0 or 1)
+	-- "Glow color": a picked color tints Blizzard's gold burst and ring
+	-- (desaturated first, so the tint is the color and not gold mixed in).
+	-- No pick leaves the stock gold.
+	local procColor = DB().procColor
+	local picked = type(procColor) == "table"
+	if picked or alert._soulTinted then
+		local r, g, b = ProcColor()
+		local regions = { alert:GetRegions() }
+		for i = 1, #regions do
+			local region = regions[i]
+			if region.SetDesaturated and region.SetVertexColor then
+				region:SetDesaturated(picked)
+				if picked then region:SetVertexColor(r, g, b) else region:SetVertexColor(1, 1, 1) end
+			end
+		end
+		alert._soulTinted = picked
+	end
 end
 
 local alertHooked = false
@@ -1188,14 +1216,14 @@ function AB:OnEnable()
 				local cfg = DB().bars[barKey]
 				local stored = cfg.size or 36
 				if dir == 1 or dir == -1 then
-					cfg.size = Soul:ScaleStep(stored, dir, 12, 72)
+					cfg.size = Soul:ScaleStep(stored, dir, 12, 80)
 				else
 					local count, cols, rows, size, gap = Grid(cfg)
 					if cols < 1 then cols = 1 end
 					if rows < 1 then rows = 1 end
 					local fromW = (width - gap * math.max(0, cols - 1)) / cols
 					local fromH = (height - gap * math.max(0, rows - 1)) / rows
-					cfg.size = Soul:MatchSize(stored, (fromW + fromH) / 2, 12, 72)
+					cfg.size = Soul:MatchSize(stored, (fromW + fromH) / 2, 12, 80)
 				end
 				LayoutBar(def)
 			end,

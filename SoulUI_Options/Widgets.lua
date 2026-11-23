@@ -294,7 +294,17 @@ local function Control(col, host, spec)
 	return control
 end
 
+local HALF_KINDS = { toggle = true, slider = true, color = true, dropdown = true, number = true, font = true, statusbar = true }
+
 function W.Row(col, spec)
+	-- A lone control sits in the left column like the paired rows around it,
+	-- so it stays next to its label. Full width put the control at the far
+	-- right, where it read as part of the right column above it. Long
+	-- labels, buttons and custom-height rows keep the full width.
+	if HALF_KINDS[spec.type] and not spec.wide and not spec.height
+		and #(spec.label or "") <= 40 then
+		return W.Row2(col, spec, nil)
+	end
 	local row = RowFrame(col, spec.height)
 	Control(col, row, spec)
 	Index(col, spec.label, row)

@@ -412,6 +412,11 @@ Q:Feature({
 		end)
 	end,
 	disable = function() SetCombatTextFont(false) end,
+	refresh = function()
+		Q.WhenLoaded("Blizzard_CombatText", function()
+			if Q.on.combatText then SetCombatTextFont(true) end
+		end)
+	end,
 })
 
 ------------------------------------------------------------------------------
@@ -488,6 +493,7 @@ end
 
 Q:Feature({
 	key = "cursorTrail",
+	refresh = function() if trail.frame then TintTrail() end end,
 	enable = function()
 		if not trail.frame then
 			local host = CreateFrame("Frame", nil, UIParent)

@@ -264,6 +264,12 @@ function Soul:SetProfile(name)
 	if charKey then
 		db.profileKeys[charKey] = name
 	end
+	-- A profile that never had a layout (just created) gets the default one
+	-- now. Before, it only got one at the next login, which wiped whatever
+	-- the player had arranged in edit mode in the meantime.
+	if db.profiles[name]._layoutVersion == nil and self.loginDone and self.ApplyDefaultLayout then
+		pcall(self.ApplyDefaultLayout, self)
+	end
 	self:Fire("ProfileChanged", name)
 	return true
 end
@@ -373,6 +379,20 @@ function Soul:ClearPositions(prefix)
 	for key in pairs(positions) do
 		if type(key) == "string" and key:sub(1, length) == prefix then
 			positions[key] = nil
+		end
+	end
+end
+
+-- CVars owned by a module that is no longer loaded (turned off under
+-- General > Modules) go back to the player's own value at login.
+function Soul:RestoreOrphanCVars()
+	local cvars = self.db and self.db.cvars
+	if type(cvars) ~= "table" or not (C_AddOns and C_AddOns.IsAddOnLoaded) then return end
+	for name, record in pairs(cvars) do
+		if type(record) == "table" and type(record.owner) == "string" and record.original ~= nil
+			and not C_AddOns.IsAddOnLoaded("SoulUI_" .. record.owner) then
+			pcall(SetCVar, name, record.original)
+			cvars[name] = nil
 		end
 	end
 end

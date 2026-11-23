@@ -142,40 +142,40 @@ local function BuildTrackers(col)
 	W.Row2(col,
 		Toggle("Combat timer", "combatTimer", "A timer while you are in combat."),
 		Toggle("Print the length", "combatTimerPrint", "Prints how long the fight was when combat ends.", Off("combatTimer")))
-	W.Row(col, Slider("Timer size", "combatTimerSize", 10, 40, 1, nil, Off("combatTimer")))
+	W.Row(col, Slider("Timer size", "combatTimerSize", 10, 48, 1, nil, Off("combatTimer")))
 	W.Row2(col,
 		Toggle("Combat alert", "combatAlert", "A short '+ Combat' and '- Combat' in the middle of the screen."),
-		Slider("Alert size", "combatAlertSize", 12, 48, 1, nil, Off("combatAlert")))
+		Slider("Alert size", "combatAlertSize", 12, 64, 1, nil, Off("combatAlert")))
 	W.Row2(col,
 		Toggle("Group death alert", "deathAlert", "Names a group member when they die. There is no combat log, so this watches health."),
 		Toggle("Warning sound", "deathAlertSound", nil, Off("deathAlert")))
-	W.Row(col, Slider("Death alert size", "deathAlertSize", 12, 48, 1, nil, Off("deathAlert")))
+	W.Row(col, Slider("Death alert size", "deathAlertSize", 12, 56, 1, nil, Off("deathAlert")))
 	W.Section(col, "Gear and performance")
 	W.Row2(col,
 		Toggle("Low durability", "durability", "Shows when a piece of gear is worn down."),
 		Slider("Warn below %", "durabilityThreshold", 5, 80, 5, nil, Off("durability")))
-	W.Row(col, Slider("Durability size", "durabilitySize", 10, 36, 1, nil, Off("durability")))
+	W.Row(col, Slider("Durability size", "durabilitySize", 10, 48, 1, nil, Off("durability")))
 	W.Row2(col,
 		Toggle("Frames per second", "fps"),
-		Slider("FPS size", "fpsSize", 10, 28, 1, nil, Off("fps")))
+		Slider("FPS size", "fpsSize", 8, 32, 1, nil, Off("fps")))
 	W.Row2(col,
 		Toggle("Secondary stats", "stats", "Crit, haste, mastery and versatility."),
-		Slider("Stats size", "statsSize", 10, 28, 1, nil, Off("stats")))
+		Slider("Stats size", "statsSize", 8, 32, 1, nil, Off("stats")))
 	W.Row2(col,
 		Toggle("Item level on the character sheet", "charIlvl"),
 		Toggle("Coordinates on the map", "mapCoords"))
 	W.Section(col, "Raid")
 	W.Row2(col,
 		Toggle("Battle resurrection", "brez", "The shared battle-res charges and the time to the next one, during a keystone or a boss fight."),
-		Slider("Icon size", "brezSize", 20, 64, 1, nil, Off("brez")))
+		Slider("Icon size", "brezSize", 20, 96, 1, nil, Off("brez")))
 	W.Row2(col,
 		Toggle("Sated and Exhaustion", "sated", "Shows while you cannot benefit from Bloodlust or Heroism."),
-		Slider("Sated size", "satedSize", 20, 64, 1, nil, Off("sated")))
+		Slider("Sated size", "satedSize", 20, 96, 1, nil, Off("sated")))
 	W.Section(col, "Cursor")
 	W.Row2(col,
 		Toggle("Crosshair", "crosshair", "A small crosshair in the middle of the screen."),
 		Toggle("Only in combat", "crosshairCombat", nil, Off("crosshair")))
-	W.Row(col, Slider("Crosshair size", "crosshairSize", 8, 64, 1, nil, Off("crosshair")))
+	W.Row(col, Slider("Crosshair size", "crosshairSize", 8, 128, 1, nil, Off("crosshair")))
 	W.Row(col, {
 		type = "color", label = "Crosshair color", disabled = Off("crosshair"),
 		get = W.ColorGet(DB, "crosshairColor", 1, 1, 1),

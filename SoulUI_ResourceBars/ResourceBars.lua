@@ -133,8 +133,9 @@ local function LayoutPips(count)
 			pip:SetPoint("TOPLEFT", tile, "TOPLEFT", inset, -inset)
 			pip:SetPoint("BOTTOMRIGHT", tile, "BOTTOMRIGHT", -inset, inset)
 			if pip.gloss then
-				pip.gloss:Show()
-				pip.gloss:SetAlpha(cfg.gloss and 0.22 or 0.1)
+				-- "Gloss" off means no gloss, not a fainter one.
+				pip.gloss:SetShown(cfg.gloss and true or false)
+				pip.gloss:SetAlpha(0.22)
 				pip.gloss:SetHeight(math.max(2, math.floor(height * 0.42)))
 			end
 		else

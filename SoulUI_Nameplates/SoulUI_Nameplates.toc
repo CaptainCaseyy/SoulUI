@@ -2,7 +2,7 @@
 ## Title: SoulUI Nameplates
 ## Notes: Enemy and neutral nameplates
 ## Author: SoulBound
-## Version: 0.9.23
+## Version: 0.9.24
 ## IconTexture: Interface\AddOns\SoulUI\Media\Textures\Logo
 ## Dependencies: SoulUI
 ## Category: SoulUI

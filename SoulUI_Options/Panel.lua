@@ -582,12 +582,11 @@ local function PaintNav()
 			local c = on and UI.C.text or UI.C.dim
 			if off then c = UI.C.faint end
 			row.text:SetTextColor(c[1], c[2], c[3])
+			-- The power mark only flags a module that is turned off. Eight
+			-- identical accent marks for "on" were noise.
 			if row.power then
-				if off then
-					row.power:SetColor(1, 1, 1, 0.22)
-				else
-					row.power:SetColor(r, g, b, on and 1 or 0.72)
-				end
+				row.power:SetShown(off and true or false)
+				if off then row.power:SetColor(1, 0.45, 0.42, 0.8) end
 			end
 		end
 	end

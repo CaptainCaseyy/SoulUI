@@ -22,7 +22,9 @@ local function Bar(parent)
 	bar:SetMinMaxValues(0, 1)
 	local bg = bar:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	bg:SetColorTexture(0.05, 0.05, 0.06, 0.92)
+	-- Lighter than the panel (0.05) so the missing-health track reads as part
+	-- of the frame instead of disappearing into the background.
+	bg:SetColorTexture(0.13, 0.13, 0.15, 0.95)
 	bar.bg = bg
 	return bar
 end
@@ -102,22 +104,30 @@ function P.UnitFrame(getUnit, getCfg)
 			power:SetStatusBarTexture(Soul:StatusbarTexture())
 			power:SetValue(0.6)
 			power:SetStatusBarColor(0.3, 0.45, 1)
-			local showCast = cfg.showCast and getUnit() ~= "player"
+			local showCast = cfg.showCast and true or false
 			cast:SetShown(showCast and true or false)
 			if showCast then
 				local ch = cfg.castHeight or 16
 				cast:ClearAllPoints()
-				cast:SetSize(cfg.castWidth or w, ch)
+				cast:SetSize((cfg.castWidth or 0) > 0 and cfg.castWidth or w, ch)
 				cast:SetPoint("BOTTOM", stage, "TOP", 0, 4)
 				cast:SetStatusBarTexture(Soul:StatusbarTexture())
 				cast:SetValue(0.55)
 				local c = Soul.Cast.Settings().interruptible
 				if type(cfg.castColor) == "table" then c = cfg.castColor end
 				cast:SetStatusBarColor(c[1], c[2], c[3])
-				Soul:ApplyFont(castText, math.max(10, math.floor(ch * 0.6)), "OUTLINE")
+				-- Same size rule as the real cast bar (CastBar:Layout).
+				local enemy = getUnit() ~= "player" and getUnit() ~= "pet"
+				local ratio = enemy and 0.7 or 0.55
+				local size = (cfg.castFont or 0) > 0 and cfg.castFont or math.max(9, math.min(16, math.floor(ch * ratio + 0.5)))
+				Soul:ApplyFont(castText, size, enemy and "BRIGHT" or "OUTLINE")
 				castText:SetText("Shadow Bolt")
 			end
-			Fit(stage, w, total + 40, width - 80, height - 40)
+			-- The cast bar sits above the frame: fit it in too.
+			local castBlock = showCast and ((cfg.castHeight or 16) + 4) or 0
+			stage:ClearAllPoints()
+			stage:SetPoint("CENTER", holder, "CENTER", 0, -6 - castBlock / 2)
+			Fit(stage, math.max(w, showCast and ((cfg.castWidth or 0) > 0 and cfg.castWidth or w) or 0), total + castBlock + 40, width - 80, height - 40)
 		end
 		update()
 		return height, update
@@ -190,7 +200,7 @@ function P.Nameplate(holder, width)
 	-- Dark track behind the missing health and cast, as on real plates.
 	local track = health:CreateTexture(nil, "BACKGROUND")
 	track:SetAllPoints()
-	track:SetColorTexture(0.06, 0.06, 0.07, 0.9)
+	track:SetColorTexture(0.13, 0.13, 0.15, 0.95)
 	local name = health:CreateFontString(nil, "OVERLAY")
 	name:SetWordWrap(false)
 	name:SetJustifyH("LEFT")
@@ -202,7 +212,7 @@ function P.Nameplate(holder, width)
 	castBar:SetValue(0.5)
 	local castTrack = castBar:CreateTexture(nil, "BACKGROUND")
 	castTrack:SetAllPoints()
-	castTrack:SetColorTexture(0.06, 0.06, 0.07, 0.9)
+	castTrack:SetColorTexture(0.13, 0.13, 0.15, 0.95)
 	local castText = castBar:CreateFontString(nil, "OVERLAY")
 	castText:SetPoint("LEFT", 4, 0)
 	local icons = {}
@@ -430,7 +440,7 @@ function P.Group(kind)
 			-- Dark track behind the missing health, like the real frames.
 			local track = bar:CreateTexture(nil, "BACKGROUND")
 			track:SetAllPoints()
-			track:SetColorTexture(0.07, 0.07, 0.08, 0.92)
+			track:SetColorTexture(0.13, 0.13, 0.15, 0.95)
 			local name = bar:CreateFontString(nil, "OVERLAY")
 			name:SetPoint("LEFT", 4, 0)
 			cells[i] = { bar = bar, name = name }

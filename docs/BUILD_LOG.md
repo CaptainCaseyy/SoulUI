@@ -2,6 +2,85 @@
 
 Newest entries at the top. Each entry says what changed, why, which files, what is untested, and which machine.
 
+## 2026-11-23 — laptop — 0.9.24 every option traced, function bugs fixed
+
+The owner asked for every option to be function-tested and for a visual refinement pass.
+
+**How it was checked:**
+- A script (scratch, not committed) confirmed that every settings key the menu writes is read by module code. No dead keys.
+- Four read-only reviewers then traced each option, from setter to drawn result: Unit and Group frames; Nameplates, Resources and Casts; Action bars and Meters; Bags, QoL, General and Profiles.
+- Each finding was verified in the code before fixing. Visible ones were checked in game.
+
+**Data loss and wrong actions (most severe):**
+- **New profile lost its layout at the next login** (`Database.lua` `SetProfile`). It had no `_layoutVersion`, so login rebuilt the default layout over whatever was arranged. Activating a layout-less profile now builds the default right away.
+- **Import could overwrite an existing profile** (`Profiles.lua`). An import named "Default" replaced the player's own Default. It now gets a new name, "Default (imported)" and so on. A non-string name no longer throws.
+- **Target "Custom health color" could not be turned off** (`PagesModules.lua`). Off wrote nil, and the default merge put Target's default color back. It now writes false.
+- **"Cast width (0 = frame)" snapped back for Target and Focus.** It now stores 0, which the frame and preview read as "frame width".
+- **Sell junk said "Sold N junk items" at a vendor that does not buy** (`Vendor.lua`).
+- **"BigWigs: SoulUI is forcing LittleWigs to load prematurely"** (`SoulUI.toc`). LittleWigs, a load-on-demand addon, was listed in OptionalDeps, which loads it at login. It has been removed; BigWigs and RaiderIO stay. Takes effect after a full client restart.
+
+**Options that did nothing or misbehaved:**
+- **Unit frames:**
+  - "Hide Blizzard frames" off now says a reload brings them back.
+  - Slider ranges now match edit-mode resizing: cast height 80, width 800, height 200. Party/raid: 400 and 200.
+- **Party/raid:**
+  - A tall power bar on a short frame inverted the health bar; it is now clamped to half the frame.
+  - Without the Unit Frames module, the shield overflow showed as an opaque white bar.
+  - The second "Dispel icons" control is renamed "Dispel icon position".
+- **Nameplates:**
+  - Edit-mode resizing now updates the click area (`Restyle` calls `ApplyHitbox`).
+  - "Your debuffs" showed everyone's debuffs (Cursor dropped `|PLAYER`); restored. The toggle is relabelled "Your debuffs and their buffs", since it also drives the buff row.
+  - Turning auras on or off in combat now applies when combat ends.
+  - The cast height minimum is 6, matching the cast bar.
+  - "Show every friendly nameplate" was Blizzard's Always Show Nameplates; relabelled.
+- **Resources:**
+  - "Gloss" off still drew a gloss.
+  - Cast bar height went up to 60 while the default is 66; pips height was capped at 80. Both now go to 120.
+- **Action bars:**
+  - "Show empty slots" off still drew each empty slot's border and key label.
+  - "Glow color" now tints Blizzard's proc burst (desaturated, then colored). No pick keeps the gold.
+  - Edit-mode resizing clamped at 72 while the slider goes to 80.
+- **Meters:**
+  - In combat the share column (secret) shows "(412.5K)" and was cut off; it is now sized for that text.
+  - Row height, Row gap and Header height also apply to window 1, which kept a stored pixel height.
+  - Changing Mode or Segment while showing a spell breakdown showed another player's spells.
+  - The Numbers dropdown showed "both" while the default is "pipe".
+- **QoL:**
+  - Turning the QoL module off now restores its CVars at the next login (`RestoreOrphanCVars`).
+  - A restored CVar's record is forgotten, so a later toggle does not put back a stale value.
+  - The combat log CVar is restored when its option goes off.
+  - Tracker size sliders now match the edit-mode ranges.
+  - Skins, the combat text font and the cursor trail follow font and accent changes.
+  - "Open containers" no longer stays blocked after being turned off at a vendor.
+- **Dimming:** many options now dim when they have no effect:
+  - unit name settings with names off;
+  - group health text options for the formats they do not apply to;
+  - nameplate name settings, stacking and Always show;
+  - debuff and purge sizes;
+  - meter number columns.
+
+**Visual:**
+- **Settings rows:** a lone option now sits in the left column next to its label. Full width put the control at the far right, where it read as part of the column above (`W.Row`). Long labels keep the full width.
+- **Sidebar:** the power mark shows only on a module that is off, instead of eight identical accent marks.
+- **Previews:**
+  - Bar tracks are lighter than the panel, so missing health reads.
+  - The unit preview fits its cast bar and uses the real cast text size and style.
+  - The player cast bar shows in the preview when it is on.
+
+**Checked in game:**
+- Reload is clean.
+- The sidebar and half-column rows.
+- Target custom color turns off and stays off (then restored to the owner's FF4E55).
+- The Target preview fits, and the meters page dims correctly.
+
+**Not checked in game:**
+- Profile create, import, and per-spec switching.
+- The proc glow tint.
+- The empty-slot border.
+- Meter columns in combat.
+- CVar restore after turning QoL off.
+- The LittleWigs message gone (needs a restart).
+
 ## 2026-11-16 — laptop — 0.9.23 compact nameplates, name inside the bar
 
 The owner asked for a compact plate, closer to Plater: the name bright inside the health bar instead of above it (above gets cluttered in big pulls), and the cast's spell name very bright inside the cast bar.
